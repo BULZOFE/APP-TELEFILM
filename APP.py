@@ -9,7 +9,7 @@ st.set_page_config(
 # ⚠️ INSERISCI IL NOME ESATTO DEL TUO FILE CSV
 NOME_FILE_CSV = "TELEFILM_LIGHT.csv"
 
-# LOCANDINA DI DEFAULT (se non presente nel CSV o se il link manca)
+# LOCANDINA DI DEFAULT
 PLACEHOLDER_POSTER = "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=400&auto=format&fit=crop"
 
 # --- CSS PERSONALIZZATO (FLASH CARD & BADGE) ---
@@ -21,7 +21,6 @@ st.markdown(
         color: #f8fafc;
     }
     
-    /* Contenitore Flash Card */
     .show-card {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         border: 1px solid #334155;
@@ -29,13 +28,8 @@ st.markdown(
         padding: 16px;
         margin-bottom: 20px;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    }
-    .show-card:hover {
-        border-color: #38bdf8;
     }
 
-    /* Badge di Stato */
     .badge-completed {
         background-color: #059669;
         color: white;
@@ -63,15 +57,6 @@ st.markdown(
         font-weight: 600;
         display: inline-block;
     }
-
-    /* Styling Locandina */
-    .poster-img {
-        border-radius: 8px;
-        object-fit: cover;
-        width: 100%;
-        height: 180px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -82,60 +67,18 @@ st.markdown(
 def load_data():
   if os.path.exists(NOME_FILE_CSV):
     try:
-      df = pd.read_csv(NOME_FILE_CSV)
-
-      # Assicura le colonne fondamentali
-      req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
-      for col in req_cols:
-        if col not in df.columns:
-          if col == "preferito":
-            df[col] = False
-          elif col in ["viste", "totali", "stagione"]:
-            df[col] = 0
-          else:
-            df[col] = "N/D"
-
-      # Individua o crea la colonna per le locandine
-      img_cols = [
-          c
-          for c in df.columns
-          if c.lower()
-          in ["locandina", "immagine", "copertina", "poster", "image"]
-      ]
-      if img_cols:
-        df["locandina_path"] = df[img_cols[0]].fillna(PLACEHOLDER_POSTER)
-      else:
-        df["locandina_path"] = PLACEHOLDER_POSTER
-
-      return df
+      return pd.read_csv(NOME_FILE_CSV)
     except Exception as e:
       st.error(f"Errore durante la lettura del file CSV: {e}")
 
-  st.warning(
-      f"File `{NOME_FILE_CSV}` non trovato. Verifica il percorso o aggiungi la"
-      " prima serie."
-  )
-  return pd.DataFrame(
-      columns=[
-          "show",
-          "stagione",
-          "viste",
-          "totali",
-          "genere",
-          "preferito",
-          "locandina_path",
-      ]
-  )
+  return pd.DataFrame()
 
 
 def save_data():
   if "df" in st.session_state:
     save_df = st.session_state.df.copy()
-    # Rimuove la colonna temporanea creata per la gestione interna se presente
-    if (
-        "locandina_path" in save_df.columns
-        and "locandina_path" not in pd.read_csv(NOME_FILE_CSV).columns
-    ):
+    # Rimuove la colonna temporanea creata per le immagini se non presente nel CSV originale
+    if "locandina_path" in save_df.columns:
       save_df = save_df.drop(columns=["locandina_path"])
     save_df.to_csv(NOME_FILE_CSV, index=False)
 
@@ -143,6 +86,30 @@ def save_data():
 # Caricamento iniziale
 if "df" not in st.session_state:
   st.session_state.df = load_data()
+
+# --- RECOVERY AUTOMATICO COLONNE (Previene KeyError) ---
+req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
+for col in req_cols:
+  if col not in st.session_state.df.columns:
+    if col == "preferito":
+      st.session_state.df[col] = False
+    elif col in ["viste", "totali", "stagione"]:
+      st.session_state.df[col] = 0
+    else:
+      st.session_state.df[col] = "N/D"
+
+if "locandina_path" not in st.session_state.df.columns:
+  img_cols = [
+      c
+      for c in st.session_state.df.columns
+      if c.lower() in ["locandina", "immagine", "copertina", "poster", "image"]
+  ]
+  if img_cols:
+    st.session_state.df["locandina_path"] = st.session_state.df[
+        img_cols[0]
+    ].fillna(PLACEHOLDER_POSTER)
+  else:
+    st.session_state.df["locandina_path"] = PLACEHOLDER_POSTER
 
 
 # --- AGGIORNAMENTI STATO ---
@@ -196,7 +163,7 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 ])
 
 
-# FUNZIONE RENDERING FLASH CARD CON LOCANDINE
+# RENDERING CARD CON RECUPERO SICURO DELLE IMMAGINI
 def render_cards(filtered_df):
   if filtered_df.empty:
     st.info("Nessuna serie da mostrare in questa categoria.")
@@ -209,15 +176,14 @@ def render_cards(filtered_df):
     stagione = int(row["stagione"])
     genere = row["genere"]
     is_fav = bool(row["preferito"])
-    img_url = (
-        row["locandina_path"]
-        if pd.notna(row["locandina_path"])
-        else PLACEHOLDER_POSTER
-    )
+
+    # Estrazione sicura dell'immagine senza crash
+    img_url = row.get("locandina_path", PLACEHOLDER_POSTER)
+    if pd.isna(img_url) or not str(img_url).strip():
+      img_url = PLACEHOLDER_POSTER
 
     pct = int((viste / totali) * 100) if totali > 0 else 0
 
-    # Determina il badge
     if viste == totali:
       badge_html = '<span class="badge-completed">COMPLETATO</span>'
     elif viste > 0:
@@ -227,7 +193,6 @@ def render_cards(filtered_df):
 
     fav_icon = "⭐" if is_fav else "☆"
 
-    # Struttura Flash Card (2 colonne: Locandina a sinistra, Info & Controlli a destra)
     with st.container():
       col_img, col_content = st.columns([1, 4])
 
@@ -264,7 +229,6 @@ def render_cards(filtered_df):
         with c_popover:
           count_key = f"input_viste_{idx}"
 
-          # Pop-up di Gestione
           with st.popover("🛠️ Gestisci", use_container_width=True):
             st.markdown(f"#### ⚙️ Modifica: {show_name}")
 
@@ -283,7 +247,7 @@ def render_cards(filtered_df):
             btn_reset, btn_save, btn_exit = st.columns(3)
 
             with btn_reset:
-              # Porta a 0 SENZA salvare sul CSV e NON CHIUDE il pop-up
+              # Azzera SENZA salvare e SENZA chiudere il pop-up
               if st.button(
                   "🔄 Reset", key=f"reset_{idx}", use_container_width=True
               ):
@@ -302,7 +266,7 @@ def render_cards(filtered_df):
                 st.rerun()
 
             with btn_exit:
-              # Annulla le modifiche e CHIUDE il pop-up senza salvare
+              # Annulla e CHIUDE il pop-up
               if st.button(
                   "❌ Esci", key=f"exit_{idx}", use_container_width=True
               ):
@@ -319,7 +283,7 @@ def render_cards(filtered_df):
       st.markdown("---")
 
 
-# POPOLAMENTO SCHEDE TABS
+# TABS PRINCIPALI
 with tab_all:
   render_cards(st.session_state.df)
 
