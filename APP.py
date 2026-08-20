@@ -6,7 +6,9 @@ st.set_page_config(
     page_title="TV Tracker Pro", page_icon="📺", layout="wide"
 )
 
-NOME_FILE_CSV = "TELEFILM_LIGHT.csv"
+# Percorso assoluto sicuro per Streamlit Cloud
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+NOME_FILE_CSV = os.path.join(BASE_DIR, "TELEFILM_LIGHT.csv")
 PLACEHOLDER_POSTER = "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=400&auto=format&fit=crop"
 
 # --- CSS PER FLASHCARD E BADGE ---
@@ -23,28 +25,34 @@ st.markdown(
 )
 
 
-# --- LETTURA E SALVATAGGIO CSV ---
+# --- FUNZIONE DI CARICAMENTO INTELLIGENTE ---
 def load_data():
   if os.path.exists(NOME_FILE_CSV):
     try:
-      df = pd.read_csv(NOME_FILE_CSV)
+      # sep=None rileva automaticamente se il file usa ',' o ';'
+      df = pd.read_csv(NOME_FILE_CSV, sep=None, engine="python")
+
+      # Pulizia e normalizzazione colonne (tutto in minuscolo e senza spazi)
+      df.columns = df.columns.str.strip().str.lower()
+
+      # Mappatura automatica dei nomi di colonna più comuni
+      rename_map = {
+          "titolo": "show",
+          "name": "show",
+          "serie": "show",
+          "locandina_path": "locandina",
+          "poster": "locandina",
+          "immagine": "locandina",
+          "copertina": "locandina",
+      }
+      df = df.rename(columns=rename_map)
+
       if not df.empty:
         return df
     except Exception as e:
       st.error(f"Errore nella lettura del file CSV: {e}")
 
-  # Struttura base di ripiego se il file non esiste
-  return pd.DataFrame(
-      columns=[
-          "show",
-          "stagione",
-          "viste",
-          "totali",
-          "genere",
-          "preferito",
-          "locandina",
-      ]
-  )
+  return pd.DataFrame()
 
 
 def save_data():
@@ -52,12 +60,15 @@ def save_data():
     st.session_state.df.to_csv(NOME_FILE_CSV, index=False)
 
 
-if "df" not in st.session_state:
+# Caricamento in Session State
+if "df" not in st.session_state or st.session_state.df.empty:
   st.session_state.df = load_data()
 
-# Controllo preventivo delle colonne per evitare crash
+# Normalizzazione e garanzia presenza colonne minime
 df_state = st.session_state.df
-for col in ["show", "stagione", "viste", "totali", "genere", "preferito"]:
+
+req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
+for col in req_cols:
   if col not in df_state.columns:
     if col == "preferito":
       df_state[col] = False
@@ -67,15 +78,30 @@ for col in ["show", "stagione", "viste", "totali", "genere", "preferito"]:
       df_state[col] = "N/D"
 
 if "locandina" not in df_state.columns:
-  # Cerca se la colonna dell'immagine ha un altro nome nel CSV
-  alt_cols = [
-      c
-      for c in df_state.columns
-      if c.lower() in ["locandina_path", "immagine", "copertina", "poster"]
-  ]
-  df_state["locandina"] = (
-      df_state[alt_cols[0]] if alt_cols else PLACEHOLDER_POSTER
-  )
+  df_state["locandina"] = PLACEHOLDER_POSTER
+
+
+# --- SIDEBAR (CON RESET MEMORIA E BACKUP) ---
+with st.sidebar:
+  st.header("⚙️ Gestione Dati")
+
+  # Pulsante per forzare il ricaricamento da disco
+  if st.button("🔄 Ricarica Dati da CSV", use_container_width=True):
+    if "df" in st.session_state:
+      del st.session_state["df"]
+    st.rerun()
+
+  st.markdown("---")
+  st.header("💾 Backup")
+  if not st.session_state.df.empty:
+    csv_bytes = st.session_state.df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "📥 Scarica CSV sul PC",
+        data=csv_bytes,
+        file_name="TELEFILM_LIGHT.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 
 # --- FUNZIONI AGGIORNAMENTO ---
@@ -105,21 +131,8 @@ def toggle_favorite(show_name):
     save_data()
 
 
-# --- INTERFACCIA ---
+# --- INTERFACCIA PRINCIPALE ---
 st.title("📺 Tracker Serie TV")
-
-# Sidebar con tasto di Backup in locale per non perdere i dati
-with st.sidebar:
-  st.header("💾 Backup Manuale")
-  if not st.session_state.df.empty:
-    csv_bytes = st.session_state.df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "📥 Scarica CSV sul PC",
-        data=csv_bytes,
-        file_name="TELEFILM_LIGHT.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
 
 df = st.session_state.df
 
@@ -144,7 +157,7 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 
 def render_cards(filtered_df):
   if filtered_df.empty:
-    st.info("Nessuna serie presente in questa categoria.")
+    st.info("Nessuna serie trovata in questa sezione.")
     return
 
   for idx, row in filtered_df.iterrows():
