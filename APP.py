@@ -63,26 +63,43 @@ st.markdown(
 )
 
 
-# --- GESTIONE E CARICAMENTO CSV ---
+# --- CARICAMENTO CON BLOCCO DI SICUREZZA ---
 def load_data():
   if os.path.exists(NOME_FILE_CSV):
     try:
-      return pd.read_csv(NOME_FILE_CSV)
+      df = pd.read_csv(NOME_FILE_CSV)
+      if not df.empty:
+        return df
     except Exception as e:
-      st.error(f"Errore durante la lettura del file CSV: {e}")
+      st.error(f"Errore lettura CSV: {e}")
 
-  return pd.DataFrame()
+  # Se il file è vuoto o non esiste, evita di sovrascrivere subito
+  return pd.DataFrame(
+      columns=["show", "stagione", "viste", "totali", "genere", "preferito"]
+  )
 
 
+# --- SALVATAGGIO SICURO ---
 def save_data():
-  if "df" in st.session_state:
+  if "df" in st.session_state and not st.session_state.df.empty:
     save_df = st.session_state.df.copy()
-    # Rimuove la colonna temporanea creata per le immagini se non presente nel CSV originale
     if "locandina_path" in save_df.columns:
       save_df = save_df.drop(columns=["locandina_path"])
     save_df.to_csv(NOME_FILE_CSV, index=False)
 
-
+# --- SIDEBAR CON TASTO DI BACKUP MANUAL ---
+with st.sidebar:
+  st.header("💾 Backup Dati")
+  if "df" in st.session_state and not st.session_state.df.empty:
+    csv_bytes = st.session_state.df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Scarica Backup CSV sul PC",
+        data=csv_bytes,
+        file_name="backup_TELEFILM_LIGHT.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+      
 # Caricamento iniziale
 if "df" not in st.session_state:
   st.session_state.df = load_data()
