@@ -290,7 +290,7 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 ])
 
 
-def render_cards(filtered_df):
+def render_cards(filtered_df, prefix="all"):
   if search_query:
     filtered_df = filtered_df[
         filtered_df["show"].astype(str).str.lower().str.contains(search_query)
@@ -350,20 +350,22 @@ def render_cards(filtered_df):
         with c_plus1:
           if viste < totali:
             if st.button(
-                "➕ +1 Ep", key=f"btn_plus_{idx}", use_container_width=True
+                "➕ +1 Ep",
+                key=f"btn_plus_{prefix}_{idx}",
+                use_container_width=True,
             ):
               increment_show_count(show_name)
               st.rerun()
           else:
             st.button(
                 "✅ Finito",
-                key=f"btn_done_{idx}",
+                key=f"btn_done_{prefix}_{idx}",
                 disabled=True,
                 use_container_width=True,
             )
 
         with c_popover:
-          count_key = f"input_viste_{idx}"
+          count_key = f"input_viste_{prefix}_{idx}"
           with st.popover("🛠️ Gestisci", use_container_width=True):
             st.markdown(f"#### ⚙️ Modifica: {show_name}")
             if count_key not in st.session_state:
@@ -379,7 +381,7 @@ def render_cards(filtered_df):
 
             if st.button(
                 "🖼️ Scarica Locandina TMDB",
-                key=f"tmdb_btn_{idx}",
+                key=f"tmdb_btn_{prefix}_{idx}",
                 use_container_width=True,
             ):
               update_single_poster(show_name)
@@ -390,14 +392,16 @@ def render_cards(filtered_df):
 
             with btn_reset:
               if st.button(
-                  "🔄 Reset", key=f"reset_{idx}", use_container_width=True
+                  "🔄 Reset",
+                  key=f"reset_{prefix}_{idx}",
+                  use_container_width=True,
               ):
                 st.session_state[count_key] = 0
 
             with btn_save:
               if st.button(
                   "💾 Salva",
-                  key=f"save_{idx}",
+                  key=f"save_{prefix}_{idx}",
                   type="primary",
                   use_container_width=True,
               ):
@@ -407,14 +411,16 @@ def render_cards(filtered_df):
 
             with btn_exit:
               if st.button(
-                  "❌ Esci", key=f"exit_{idx}", use_container_width=True
+                  "❌ Esci",
+                  key=f"exit_{prefix}_{idx}",
+                  use_container_width=True,
               ):
                 st.session_state[count_key] = viste
                 st.rerun()
 
         with c_fav:
           if st.button(
-              fav_icon, key=f"btn_fav_{idx}", use_container_width=True
+              fav_icon, key=f"btn_fav_{prefix}_{idx}", use_container_width=True
           ):
             toggle_favorite(show_name)
             st.rerun()
@@ -423,77 +429,27 @@ def render_cards(filtered_df):
 
 
 with tab_all:
-  render_cards(st.session_state.df)
+  render_cards(st.session_state.df, prefix="all")
 
 with tab_in_prog:
   render_cards(
       st.session_state.df[
           (st.session_state.df["viste"] > 0)
           & (st.session_state.df["viste"] < st.session_state.df["totali"])
-      ]
+      ],
+      prefix="prog",
   )
 
 with tab_comp:
   render_cards(
       st.session_state.df[
           st.session_state.df["viste"] == st.session_state.df["totali"]
-      ]
+      ],
+      prefix="comp",
   )
 
 with tab_fav:
-  render_cards(st.session_state.df[st.session_state.df["preferito"] == True])
-
-with tab_add:
-  st.subheader("➕ Aggiungi Nuova Serie")
-  with st.form("add_show_form", clear_on_submit=True):
-    new_title = st.text_input("Titolo della Serie TV:")
-    new_img = st.text_input(
-        "URL Locandina/Immagine (lascia vuoto per cercarla su TMDB):"
-    )
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-      new_season = st.number_input("Stagione:", min_value=1, value=1)
-      new_genre = st.selectbox(
-          "Genere:",
-          [
-              "Drammatico",
-              "Commedia",
-              "Sci-Fi",
-              "Anime",
-              "Documentario",
-              "Thriller",
-              "Azione",
-              "Crime",
-          ],
-      )
-    with col_f2:
-      new_tot = st.number_input("Totale Puntate:", min_value=1, value=10)
-      new_viste = st.number_input(
-          "Puntate già Viste:", min_value=0, max_value=new_tot, value=0
-      )
-
-    submitted = st.form_submit_button("Aggiungi alla lista")
-    if submitted and new_title.strip() != "":
-      title_clean = new_title.strip()
-      img_val = new_img.strip()
-
-      if not img_val:
-        key = st.session_state.get("tmdb_key", "")
-        fetched_img = fetch_tmdb_poster(title_clean, key) if key else None
-        img_val = fetched_img if fetched_img else PLACEHOLDER_POSTER
-
-      new_row = {
-          "show": title_clean,
-          "stagione": int(new_season),
-          "viste": int(new_viste),
-          "totali": int(new_tot),
-          "genere": new_genre,
-          "preferito": False,
-          "locandina": img_val,
-      }
-      st.session_state.df = pd.concat(
-          [st.session_state.df, pd.DataFrame([new_row])], ignore_index=True
-      )
-      save_data()
-      st.success(f"Serie '{title_clean}' aggiunta con successo!")
-      st.rerun()
+  render_cards(
+      st.session_state.df[st.session_state.df["preferito"] == True],
+      prefix="fav",
+  )
