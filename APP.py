@@ -56,52 +56,19 @@ st.markdown(
 )
 
 
-# Inizializzazione Dati
+REQUIRED_COLUMNS = {"show", "stagione", "viste", "totali", "genere", "preferito"}
+
 def init_data():
-  if "df" not in st.session_state:
-    data = [
-        {
-            "show": "Breaking Bad",
-            "stagione": 1,
-            "viste": 5,
-            "totali": 7,
-            "genere": "Drammatico",
-            "preferito": True,
-        },
-        {
-            "show": "Stranger Things",
-            "stagione": 4,
-            "viste": 9,
-            "totali": 9,
-            "genere": "Sci-Fi",
-            "preferito": True,
-        },
-        {
-            "show": "The Bear",
-            "stagione": 2,
-            "viste": 3,
-            "totali": 10,
-            "genere": "Commedia/Dramma",
-            "preferito": False,
-        },
-        {
-            "show": "Attack on Titan",
-            "stagione": 1,
-            "viste": 0,
-            "totali": 25,
-            "genere": "Anime",
-            "preferito": False,
-        },
-        {
-            "show": "Planet Earth III",
-            "stagione": 1,
-            "viste": 6,
-            "totali": 6,
-            "genere": "Documentario",
-            "preferito": False,
-        },
-    ]
-    st.session_state.df = pd.DataFrame(data)
+    # Ricrea il DataFrame se non esiste o se mancano colonne aggiornate nel session_state
+    if "df" not in st.session_state or not REQUIRED_COLUMNS.issubset(st.session_state.df.columns):
+        data = [
+            {"show": "Breaking Bad", "stagione": 1, "viste": 5, "totali": 7, "genere": "Drammatico", "preferito": True},
+            {"show": "Stranger Things", "stagione": 4, "viste": 9, "totali": 9, "genere": "Sci-Fi", "preferito": True},
+            {"show": "The Bear", "stagione": 2, "viste": 3, "totali": 10, "genere": "Commedia/Dramma", "preferito": False},
+            {"show": "Attack on Titan", "stagione": 1, "viste": 0, "totali": 25, "genere": "Anime", "preferito": False},
+            {"show": "Planet Earth III", "stagione": 1, "viste": 6, "totali": 6, "genere": "Documentario", "preferito": False},
+        ]
+        st.session_state.df = pd.DataFrame(data)
 
 
 init_data()
