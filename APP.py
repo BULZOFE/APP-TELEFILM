@@ -1,39 +1,54 @@
-import os
-from datetime import datetime, timedelta
-import numpy as np
+import datetime
 import pandas as pd
-import requests
 import streamlit as st
 
-# Configurazione Pagina - Ottimizzata per iPhone
+# Configurazione Pagina
 st.set_page_config(
     page_title="TV Tracker Pro",
     page_icon="📺",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# Tema Scuro ed Elementi Grafici Stile iOS / Mobile-First
+# CSS Personalizzato
 st.markdown(
     """
 <style>
-    body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .stApp { background-color: #0f172a; }
-    .card {
-        background: linear-gradient(145deg, #1e293b, #0f172a);
-        border-radius: 18px; padding: 16px; border: 1px solid #334155;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); margin-bottom: 20px;
+    .main {
+        background-color: #0f172a;
+        color: #f8fafc;
     }
-    .card-title { font-size: 20px; font-weight: 800; color: #38bdf8; margin-bottom: 6px; }
-    .badge-score { background-color: #f59e0b; color: #000; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 13px; float: right; }
-    .badge-user-score { background-color: #10b981; color: #ffffff; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 13px; margin-right: 5px; }
-    .badge-genre { background-color: #334155; color: #94a3b8; padding: 3px 8px; border-radius: 8px; font-size: 12px; margin-right: 6px; }
-    .badge-provider { background-color: #0284c7; color: white; padding: 3px 8px; border-radius: 8px; font-size: 12px; }
-    .ep-box { background: #1e293b; border-left: 4px solid #38bdf8; padding: 12px; margin: 12px 0; border-radius: 8px; font-size: 14px; }
-    .stButton>button {
-        width: 100%; background-color: #2563eb; color: white; font-weight: bold;
-        border-radius: 12px; padding: 12px; border: none; font-size: 16px;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+    .show-card {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+    .badge-completed {
+        background-color: #059669;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-in-progress {
+        background-color: #0284c7;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-not-started {
+        background-color: #475569;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
     }
 </style>
 """,
@@ -41,569 +56,297 @@ st.markdown(
 )
 
 
-# Funzione per recuperare la locandina in automatico
-@st.cache_data(ttl=86400)
-def get_poster_url(show_name):
-  try:
-    url = f"https://api.tvmaze.com/singlesearch/shows?q={requests.utils.quote(show_name)}"
-    res = requests.get(url, timeout=3)
-    if res.status_code == 200:
-      data = res.json()
-      if data and "image" in data and data["image"]:
-        return data["image"].get("medium") or data["image"].get("original")
-  except Exception:
-    pass
-  return "https://via.placeholder.com/210x295/1e293b/94a3b8?text=TV+Show"
+# Inizializzazione Dati
+def init_data():
+  if "df" not in st.session_state:
+    data = [
+        {
+            "show": "Breaking Bad",
+            "stagione": 1,
+            "viste": 5,
+            "totali": 7,
+            "genere": "Drammatico",
+            "preferito": True,
+        },
+        {
+            "show": "Stranger Things",
+            "stagione": 4,
+            "viste": 9,
+            "totali": 9,
+            "genere": "Sci-Fi",
+            "preferito": True,
+        },
+        {
+            "show": "The Bear",
+            "stagione": 2,
+            "viste": 3,
+            "totali": 10,
+            "genere": "Commedia/Dramma",
+            "preferito": False,
+        },
+        {
+            "show": "Attack on Titan",
+            "stagione": 1,
+            "viste": 0,
+            "totali": 25,
+            "genere": "Anime",
+            "preferito": False,
+        },
+        {
+            "show": "Planet Earth III",
+            "stagione": 1,
+            "viste": 6,
+            "totali": 6,
+            "genere": "Documentario",
+            "preferito": False,
+        },
+    ]
+    st.session_state.df = pd.DataFrame(data)
 
 
-# Pulizia e Caricamento Dati
-def process_dataframe(df):
-  df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
-  df["TELEFILM"] = df["TELEFILM"].astype(str).str.strip()
-  df["STATO"] = (
-      df["STATO"]
-      .astype(str)
-      .str.strip()
-      .str.upper()
-      .replace({"SCARICATA": "S"})
-  )
-  df["GENERE"] = (
-      df["GENERE"]
-      .astype(str)
-      .str.strip()
-      .str.upper()
-      .replace({"COMEDT": "COMEDY", "NAN": "ALTRO"})
-  )
-  df["ABBONAMENTO"] = (
-      df["ABBONAMENTO"]
-      .astype(str)
-      .str.strip()
-      .str.upper()
-      .replace({"NAN": "SCONOSCIUTO"})
-  )
-
-  df["GENERE"] = (
-      df.groupby("TELEFILM")["GENERE"]
-      .transform(lambda x: x.ffill().bfill())
-      .fillna("ALTRO")
-  )
-  df["ABBONAMENTO"] = (
-      df.groupby("TELEFILM")["ABBONAMENTO"]
-      .transform(lambda x: x.ffill().bfill())
-      .fillna("NON SPECIFICATO")
-  )
-
-  for col in [
-      "S",
-      "E",
-      "PUNT TOT",
-      "PUNT VISTE",
-      "PERC",
-      "NUOVA",
-      "FINITO",
-      "VALORE",
-      "POS CLASSIFICA",
-  ]:
-    if col in df.columns:
-      df[col] = pd.to_numeric(
-          df[col].astype(str).str.replace(",", "."), errors="coerce"
-      ).fillna(0.0)
-
-  if "VALORE" in df.columns:
-    df["VALORE"] = df["VALORE"].clip(lower=0.0, upper=100.0)
-
-  df["DATA_VISIONA"] = pd.to_datetime(
-      df["DATA"].astype(str), format="%d/%m/%y", errors="coerce"
-  )
-  return df
+init_data()
 
 
-if "df" not in st.session_state:
-  if os.path.exists("TELEFILM2024_LIGHT.csv"):
-    raw_df = pd.read_csv(
-        "TELEFILM2024_LIGHT.csv",
-        sep=";",
-        encoding="utf-8-sig",
-        low_memory=False,
-    )
-    st.session_state.df = process_dataframe(raw_df)
-  else:
-    st.session_state.df = None
-
-# Punteggi Generi Personalizzabili
-DEFAULT_GENRE_SCORES = {
-    "SCI-FI": 15,
-    "THRILLER": 14,
-    "DRAMA": 12,
-    "ACTION": 11,
-    "SUPERNATURAL": 10,
-    "CRIME": 10,
-    "FANTASY": 9,
-    "LEGAL": 8,
-    "SPY": 8,
-    "HORROR": 7,
-    "MEDICAL": 6,
-    "ANIMATION": 5,
-    "COMEDY": 5,
-    "ALTRO": 0,
-}
-
-if "genre_scores" not in st.session_state:
-  st.session_state.genre_scores = DEFAULT_GENRE_SCORES.copy()
+# Funzioni di Modifica Stato Database
+def set_show_watched_count(show_name, count):
+  st.session_state.df.loc[
+      st.session_state.df["show"] == show_name, "viste"
+  ] = int(count)
 
 
-# Utility Funzioni Modifica Puntate
-def reset_show_progress(show_name):
-  mask = st.session_state.df["TELEFILM"] == show_name
-  st.session_state.df.loc[mask, "STATO"] = "N"
-  first_idx = st.session_state.df[mask].sort_values(by=["S", "E"]).index[0]
-  st.session_state.df.loc[first_idx, "STATO"] = "S"
+def increment_show_count(show_name):
+  idx = st.session_state.df[st.session_state.df["show"] == show_name].index
+  if not idx.empty:
+    curr = st.session_state.df.loc[idx[0], "viste"]
+    tot = st.session_state.df.loc[idx[0], "totali"]
+    if curr < tot:
+      st.session_state.df.loc[idx[0], "viste"] = curr + 1
 
 
-def set_show_watched_count(show_name, watched_count):
-  mask = st.session_state.df["TELEFILM"] == show_name
-  sorted_indices = st.session_state.df[mask].sort_values(by=["S", "E"]).index
-  for i, idx in enumerate(sorted_indices):
-    if i < watched_count:
-      st.session_state.df.loc[idx, "STATO"] = "V"
-    elif i == watched_count:
-      st.session_state.df.loc[idx, "STATO"] = "S"
+def toggle_favorite(show_name):
+  idx = st.session_state.df[st.session_state.df["show"] == show_name].index
+  if not idx.empty:
+    st.session_state.df.loc[idx[0], "preferito"] = not st.session_state.df.loc[
+        idx[0], "preferito"
+    ]
+
+
+# Intestazione App
+st.title("📺 Tracker Serie TV & Show")
+st.caption("Monitora i tuoi progressi di visione e gestisci le tue serie.")
+
+# Metric Dashboard
+df = st.session_state.df
+col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+total_shows = len(df)
+completed_shows = len(df[df["viste"] == df["totali"]])
+in_progress_shows = len(df[(df["viste"] > 0) & (df["viste"] < df["totali"])])
+total_episodes_watched = int(df["viste"].sum())
+
+col_m1.metric("Serie Totali", total_shows)
+col_m2.metric("In Corso", in_progress_shows)
+col_m3.metric("Completate", completed_shows)
+col_m4.metric("Episodi Visti", total_episodes_watched)
+
+st.divider()
+
+# Tab per Filtri
+tab_all, tab_in_progress, tab_completed, tab_favs, tab_add = st.tabs([
+    "📋 Tutti gli Show",
+    "🍿 In Corso",
+    "✅ Completati",
+    "⭐ Preferiti",
+    "➕ Aggiungi Serie",
+])
+
+
+# Render scheda Serie TV
+def render_show_list(filtered_df):
+  if filtered_df.empty:
+    st.info("Nessuna serie trovata in questa sezione.")
+    return
+
+  for idx, row in filtered_df.iterrows():
+    show_name = row["show"]
+    viste = int(row["viste"])
+    totali = int(row["totali"])
+    stagione = int(row["stagione"])
+    genere = row["genere"]
+    is_fav = row["preferito"]
+
+    pct = int((viste / totali) * 100) if totali > 0 else 0
+
+    if viste == totali:
+      badge_html = '<span class="badge-completed">COMPLETATO</span>'
+    elif viste > 0:
+      badge_html = '<span class="badge-in-progress">IN CORSO</span>'
     else:
-      st.session_state.df.loc[idx, "STATO"] = "N"
+      badge_html = '<span class="badge-not-started">DA INIZIARE</span>'
 
+    fav_icon = "⭐" if is_fav else "☆"
 
-# Header e Fallback File Uploader
-st.title("📺 TV Tracker Pro")
-
-if st.session_state.df is None:
-  st.warning("⚠️ File `TELEFILM2024_LIGHT.csv` non trovato sul server.")
-  uploaded_file = st.file_uploader(
-      "Carica il tuo file CSV per iniziare:", type=["csv"]
-  )
-  if uploaded_file is not None:
-    raw_df = pd.read_csv(
-        uploaded_file, sep=";", encoding="utf-8-sig", low_memory=False
-    )
-    st.session_state.df = process_dataframe(raw_df)
-    st.success("Database caricato con successo!")
-    st.rerun()
-  st.stop()
-
-
-# Calcolo Punteggio Algoritmo
-def calculate_score(series_df):
-  valore = float(series_df["VALORE"].iloc[0])
-  voto_personale = min(100.0, max(0.0, valore)) if valore > 0 else 70.0
-  comp_voto = voto_personale * 0.20
-
-  genere = series_df["GENERE"].iloc[0]
-  p_genere = st.session_state.genre_scores.get(genere, 5)
-
-  ready_eps = series_df[series_df["STATO"] == "S"]
-  if len(ready_eps) == 0:
-    return 0
-
-  tot_eps = len(series_df)
-  viste_eps = len(series_df[series_df["STATO"] == "V"])
-  perc_viste = viste_eps / tot_eps if tot_eps > 0 else 0
-  bonus_progresso = round(perc_viste * 40.0, 1)
-
-  first_ready = ready_eps.sort_values(by=["S", "E"]).iloc[0]
-  malus_eta = 0
-  if pd.notnull(first_ready["DATA_VISIONA"]):
-    giorni_attesa = (datetime.now() - first_ready["DATA_VISIONA"]).days
-    if giorni_attesa > 30:
-      malus_eta = min(20, (giorni_attesa - 30) // 15 * 2)
-
-  is_nuova = series_df["NUOVA"].iloc[0] == 1
-  has_seen_any = viste_eps > 0
-  bonus_nuova = 5 if (is_nuova and not has_seen_any) else 0
-
-  three_months = datetime.now() - timedelta(days=90)
-  recent = series_df[
-      (series_df["STATO"] == "V") & (series_df["DATA_VISIONA"] >= three_months)
-  ]
-  bonus_inerzia = min(15, len(recent) * 2)
-
-  curr_season = first_ready["S"]
-  season_eps = series_df[series_df["S"] == curr_season]
-  bonus_season = 10 if (season_eps["STATO"] == "S").all() else 0
-
-  is_finito = series_df["FINITO"].iloc[0] == 1
-  malus_cancellata = 15 if is_finito else 0
-
-  totale = (
-      comp_voto
-      + p_genere
-      + bonus_progresso
-      + bonus_inerzia
-      + bonus_season
-      + bonus_nuova
-      - malus_eta
-      - malus_cancellata
-  )
-  return round(max(0.0, totale), 1)
-
-
-# Funzione per Renderizzare le Card
-def render_show_cards(rank_df):
-  for idx, row in rank_df.iterrows():
-    poster_url = get_poster_url(row["show"])
-    val_txt = f"{row['valore']:.0f}/100" if row["valore"] > 0 else "N/D"
-
-    col_img, col_info = st.columns([1, 2.2])
-    with col_img:
-      st.image(poster_url, use_container_width=True)
-
-    with col_info:
+    with st.container():
       st.markdown(
           f"""
-            <div style="margin-bottom: 6px;">
-                <span class="badge-score">⭐ {row['score']} pt</span>
-                <span class="badge-user-score">👤 {val_txt}</span>
-            </div>
-            <div class="card-title">{row['show']}</div>
-            <div>
-                <span class="badge-genre">{row['genere']}</span>
-                <span class="badge-provider">📺 {row['provider']}</span>
-            </div>
-            <div class="ep-box">
-                <div><strong>Prossimo:</strong> S{row['season']:02d}E{row['episode']:02d}</div>
-                <div style="font-size: 17px; font-weight: 800; color: #10b981; margin-top: 6px;">
-                    📊 Viste {row['viste']} / {row['totali']} ({row['perc']:.0f}%)
+            <div class="show-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="margin: 0; padding: 0; font-size: 1.2rem;">{show_name} {badge_html}</h3>
+                    <span style="color: #94a3b8; font-size: 0.85rem;">Stagione {stagione} • {genere}</span>
                 </div>
             </div>
             """,
           unsafe_allow_html=True,
       )
 
-    col_b1, col_b2, col_b3 = st.columns([1.8, 1.4, 1])
-    with col_b1:
-      if st.button(
-          f"▶️ S{row['season']:02d}E{row['episode']:02d}",
-          key=f"btn_v_{row['show']}",
-      ):
-        mask = (
-            (st.session_state.df["TELEFILM"] == row["show"])
-            & (st.session_state.df["S"] == row["season"])
-            & (st.session_state.df["E"] == row["episode"])
-        )
-        st.session_state.df.loc[mask, "STATO"] = "V"
-        st.session_state.df.loc[mask, "DATA"] = datetime.now().strftime(
-            "%d/%m/%y"
-        )
-        st.session_state.df.loc[mask, "DATA_VISIONA"] = datetime.now()
-        st.success(f"Segnato S{row['season']:02d}E{row['episode']:02d} come VISTO!")
-        st.rerun()
+      st.progress(pct / 100)
 
-    with col_b2:
-      # Bottone dinamico: mostra "✏️ Voto" o "⭐ [Voto] (Cambia)"
-      label_voto = (
-          f"⭐ {int(row['valore'])} (Cambia)"
-          if row["valore"] > 0
-          else "✏️ Voto"
-      )
-      with st.popover(label_voto):
-        st.caption("ℹ️ Voto massimo: 100")
-        val_default = min(100.0, max(0.0, float(row["valore"])))
-        nuovo_voto = st.number_input(
-            f"Voto per {row['show']}",
-            min_value=0.0,
-            max_value=100.0,
-            value=val_default,
-            step=5.0,
-            key=f"inp_val_{row['show']}",
-        )
-        if st.button("Salva Voto", key=f"save_val_{row['show']}"):
-          mask_show = st.session_state.df["TELEFILM"] == row["show"]
-          st.session_state.df.loc[mask_show, "VALORE"] = nuovo_voto
-          st.success("Voto salvato!")
-          st.rerun()
+      c_info, c_plus1, c_popover, c_fav = st.columns([3, 1.5, 1.5, 1])
 
-    with col_b3:
-      with st.popover("🛠️"):
-        st.markdown(f"**Gestione Puntate per {row['show']}**")
+      with c_info:
+        st.caption(f"Avanzamento: **{viste}/{totali}** puntate ({pct}%)")
 
-        if st.button("🔄 Reset (0 Viste)", key=f"reset_{row['show']}"):
-          reset_show_progress(row["show"])
-          st.success("Progresso azzerato!")
-          st.rerun()
+      with c_plus1:
+        if viste < totali:
+          if st.button(
+              "➕ +1 Ep", key=f"btn_plus_{idx}", use_container_width=True
+          ):
+            increment_show_count(show_name)
+            st.toast(f"Aggiunto 1 episodio a '{show_name}'!")
+            st.rerun()
+        else:
+          st.button(
+              "✅ Finito",
+              key=f"btn_done_{idx}",
+              disabled=True,
+              use_container_width=True,
+          )
 
-        st.markdown("---")
-        new_count = st.number_input(
-            "Puntate Viste Esatte:",
-            min_value=0,
-            max_value=int(row["totali"]),
-            value=int(row["viste"]),
-            step=1,
-            key=f"count_{row['show']}",
-        )
-        if st.button("Salva Progresso", key=f"save_prog_{row['show']}"):
-          set_show_watched_count(row["show"], new_count)
-          st.success("Progresso aggiornato!")
-          st.rerun()
+      with c_popover:
+        # Chiave univoca per l'input di questa serie
+        count_key = f"input_viste_{idx}"
 
-    st.markdown(
-        "<hr style='border:1px solid #1e293b; margin:15px 0;'>",
-        unsafe_allow_html=True,
-    )
+        # Pop-up di Gestione Avanzata
+        with st.popover("🛠️ Gestisci", use_container_width=True):
+          st.markdown(f"### ⚙️ {show_name}")
+          st.caption(f"Stagione {stagione} • Totale puntate: **{totali}**")
 
+          # Inizializza lo stato dell'input se non presente
+          if count_key not in st.session_state:
+            st.session_state[count_key] = viste
 
-# Tab principali
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["🛋️ Divano", "📥 Aggiorna N➜S", "📁 Completate", "⚙️ Impostazioni"]
-)
+          # Input numerico
+          st.number_input(
+              "Puntate viste esatte:",
+              min_value=0,
+              max_value=totali,
+              step=1,
+              key=count_key,
+          )
 
-# TAB 1: DIVANO
-with tab1:
-  df_curr = st.session_state.df
-  shows_with_S = df_curr[df_curr["STATO"] == "S"]["TELEFILM"].unique()
+          st.markdown("---")
 
-  if len(shows_with_S) == 0:
-    st.info(
-        "🎉 Non hai nessuna puntata in stato 'S' (Pronta da vedere)! Vai nella"
-        " scheda 'Aggiorna N➜S' per scaricarne altre."
-    )
-  else:
-    rankings = []
-    for show in shows_with_S:
-      s_df = df_curr[df_curr["TELEFILM"] == show]
-      score = calculate_score(s_df)
-      valore_pers = float(s_df["VALORE"].iloc[0])
-      next_ep = (
-          s_df[s_df["STATO"] == "S"].sort_values(by=["S", "E"]).iloc[0]
-      )
+          # Pulsanti di Azione all'interno del Pop-up
+          btn_reset, btn_save, btn_exit = st.columns(3)
 
-      tot_eps = len(s_df)
-      viste_eps = len(s_df[s_df["STATO"] == "V"])
+          with btn_reset:
+            # RESET: Imposta l'input a 0 nel session_state, NON salva nel DB e NON fa st.rerun() -> Il pop-up rimane APERTO!
+            if st.button("🔄 Reset", key=f"reset_{idx}", use_container_width=True):
+              st.session_state[count_key] = 0
 
-      rankings.append({
-          "show": show,
-          "score": score,
-          "valore": valore_pers,
-          "season": int(next_ep["S"]),
-          "episode": int(next_ep["E"]),
-          "genere": s_df["GENERE"].iloc[0],
-          "provider": s_df["ABBONAMENTO"].iloc[0],
-          "viste": viste_eps,
-          "totali": tot_eps,
-          "perc": (viste_eps / tot_eps * 100) if tot_eps > 0 else 0,
-      })
-
-    full_rank_df = pd.DataFrame(rankings).sort_values(
-        by="score", ascending=False
-    )
-
-    df_started = full_rank_df[full_rank_df["viste"] > 0]
-    df_new = full_rank_df[full_rank_df["viste"] == 0]
-
-    sub_tab1, sub_tab2 = st.tabs(
-        [f"▶️ In Corso ({len(df_started)})", f"🆕 Da Iniziare ({len(df_new)})"]
-    )
-
-    with sub_tab1:
-      if len(df_started) == 0:
-        st.caption("Nessuna serie già iniziata tra quelle pronte.")
-      else:
-        render_show_cards(df_started)
-
-    with sub_tab2:
-      if len(df_new) == 0:
-        st.caption("Nessuna nuova serie da iniziare tra quelle pronte.")
-      else:
-        render_show_cards(df_new)
-
-# TAB 2: AGGIORNA N -> S
-with tab2:
-  st.subheader("📥 Aggiorna Puntate da Scaricare (N ➜ S)")
-  df_curr = st.session_state.df
-  shows_with_N = df_curr[df_curr["STATO"] == "N"]["TELEFILM"].unique()
-
-  if len(shows_with_N) == 0:
-    st.success("✨ Non ci sono puntate in stato 'N' da aggiornare!")
-  else:
-    st.write(f"Ci sono **{len(shows_with_N)}** serie con puntate da scaricare.")
-    for show in shows_with_N:
-      s_df = df_curr[df_curr["TELEFILM"] == show]
-      n_eps = s_df[s_df["STATO"] == "N"].sort_values(by=["S", "E"])
-      if len(n_eps) > 0:
-        oldest_n = n_eps.iloc[0]
-        poster_url = get_poster_url(show)
-
-        with st.expander(
-            f"📌 {show} - Prossima: S{int(oldest_n['S']):02d}E{int(oldest_n['E']):02d}",
-            expanded=True,
-        ):
-          col_p, col_d = st.columns([1, 2])
-          with col_p:
-            st.image(poster_url, use_container_width=True)
-          with col_d:
-            st.write(f"**Piattaforma:** {s_df['ABBONAMENTO'].iloc[0]}")
-            st.write(f"**Genere:** {s_df['GENERE'].iloc[0]}")
-            st.write(f"**Voto Personale:** {s_df['VALORE'].iloc[0]:.0f}/100")
-
+          with btn_save:
+            # SALVA: Salva il valore nel DB, mostra toast e fa st.rerun() -> Il pop-up si CHIUDE!
             if st.button(
-                f"✅ Pronta S{int(oldest_n['S']):02d}E{int(oldest_n['E']):02d}",
-                key=f"btn_s_{show}_{oldest_n['S']}_{oldest_n['E']}",
+                "💾 Salva",
+                key=f"save_{idx}",
+                type="primary",
+                use_container_width=True,
             ):
-              mask = (
-                  (st.session_state.df["TELEFILM"] == show)
-                  & (st.session_state.df["S"] == oldest_n["S"])
-                  & (st.session_state.df["E"] == oldest_n["E"])
+              new_val = st.session_state[count_key]
+              set_show_watched_count(show_name, new_val)
+              st.toast(
+                  f"Progresso di '{show_name}' salvato a {new_val}/{totali}!"
               )
-              st.session_state.df.loc[mask, "STATO"] = "S"
               st.rerun()
 
+          with btn_exit:
+            # ESCI: Ripristina il valore originale (annullando modifiche o reset) e fa st.rerun() -> Il pop-up si CHIUDE senza salvare!
             if st.button(
-                f"⏩ Tutta la Stagione {int(oldest_n['S'])} pronta",
-                key=f"btn_s_all_{show}_{oldest_n['S']}",
+                "❌ Esci", key=f"exit_{idx}", use_container_width=True
             ):
-              mask = (
-                  (st.session_state.df["TELEFILM"] == show)
-                  & (st.session_state.df["S"] == oldest_n["S"])
-                  & (st.session_state.df["STATO"] == "N")
-              )
-              st.session_state.df.loc[mask, "STATO"] = "S"
+              st.session_state[count_key] = viste
               st.rerun()
 
-# TAB 3: COMPLETATE
-with tab3:
-  st.subheader("📁 Archivio Serie Completate")
-  completed_shows = [
-      {
-          "show": show,
-          "tot_episodes": len(group),
-          "genere": group["GENERE"].iloc[0],
-          "provider": group["ABBONAMENTO"].iloc[0],
-          "voto": group["VALORE"].iloc[0],
-      }
-      for show, group in st.session_state.df.groupby("TELEFILM")
-      if (group["STATO"] == "V").all()
-  ]
-  if len(completed_shows) > 0:
-    st.dataframe(pd.DataFrame(completed_shows), use_container_width=True)
-  else:
-    st.info("Nessuna serie completata al 100%.")
-
-# TAB 4: IMPOSTAZIONI, CORREZIONE DATI E BACKUP
-with tab4:
-  st.subheader("⚙️ Impostazioni e Gestione")
-
-  with st.expander(
-      "✏️ Correzione Manuale Dati Serie / Episodi", expanded=True
-  ):
-    st.caption(
-        "Seleziona una serie per modificare manualmente lo stato delle singole"
-        " puntate o resettare i dati errati:"
-    )
-
-    all_shows = sorted(st.session_state.df["TELEFILM"].unique())
-    selected_show = st.selectbox(
-        "Seleziona la Serie TV:",
-        all_shows,
-        index=all_shows.index("The Capture")
-        if "The Capture" in all_shows
-        else 0,
-    )
-
-    if selected_show:
-      show_mask = st.session_state.df["TELEFILM"] == selected_show
-      sub_df = st.session_state.df[show_mask].sort_values(by=["S", "E"])
-
-      tot_e = len(sub_df)
-      v_e = len(sub_df[sub_df["STATO"] == "V"])
-      s_e = len(sub_df[sub_df["STATO"] == "S"])
-      n_e = len(sub_df[sub_df["STATO"] == "N"])
-
-      st.write(
-          f"**Stato attuale:** Viste: `{v_e}` | Pronte (S): `{s_e}` | Da"
-          f" scaricare (N): `{n_e}` (Totale: `{tot_e}`)"
-      )
-
-      c_m1, c_m2 = st.columns(2)
-      with c_m1:
+      with c_fav:
         if st.button(
-            f"🔄 Reset '{selected_show}' a 0 Viste", key="tab4_reset"
+            fav_icon, key=f"btn_fav_{idx}", use_container_width=True
         ):
-          reset_show_progress(selected_show)
-          st.success(f"Progresso di {selected_show} azzerato!")
+          toggle_favorite(show_name)
           st.rerun()
-      with c_m2:
-        new_v_count = st.number_input(
-            "Imposta quante viste:",
-            min_value=0,
-            max_value=tot_e,
-            value=v_e,
-            step=1,
-            key="tab4_v_count",
+
+      st.markdown("<br>", unsafe_allow_html=True)
+
+
+# Rendering delle varie schede
+with tab_all:
+  render_show_list(st.session_state.df)
+
+with tab_in_progress:
+  df_prog = st.session_state.df[
+      (st.session_state.df["viste"] > 0)
+      & (st.session_state.df["viste"] < st.session_state.df["totali"])
+  ]
+  render_show_list(df_prog)
+
+with tab_completed:
+  df_comp = st.session_state.df[
+      st.session_state.df["viste"] == st.session_state.df["totali"]
+  ]
+  render_show_list(df_comp)
+
+with tab_favs:
+  df_fav = st.session_state.df[st.session_state.df["preferito"] == True]
+  render_show_list(df_fav)
+
+with tab_add:
+  st.subheader("➕ Aggiungi Nuova Serie TV")
+  with st.form("add_show_form", clear_on_submit=True):
+    new_title = st.text_input("Titolo della Serie TV:")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+      new_season = st.number_input("Stagione:", min_value=1, value=1)
+      new_genre = st.selectbox(
+          "Genere:",
+          [
+              "Drammatico",
+              "Commedia",
+              "Sci-Fi",
+              "Anime",
+              "Documentario",
+              "Thriller",
+              "Azione",
+          ],
+      )
+    with col_f2:
+      new_tot = st.number_input("Totale Puntate:", min_value=1, value=10)
+      new_viste = st.number_input(
+          "Puntate già Viste:", min_value=0, max_value=new_tot, value=0
+      )
+
+    submitted = st.form_submit_button("Aggiungi Serie")
+    if submitted:
+      if new_title.strip() == "":
+        st.error("Il titolo non può essere vuoto.")
+      else:
+        new_row = {
+            "show": new_title.strip(),
+            "stagione": int(new_season),
+            "viste": int(new_viste),
+            "totali": int(new_tot),
+            "genere": new_genre,
+            "preferito": False,
+        }
+        st.session_state.df = pd.concat(
+            [st.session_state.df, pd.DataFrame([new_row])], ignore_index=True
         )
-        if st.button("Salva Conteggio", key="tab4_save_count"):
-          set_show_watched_count(selected_show, new_v_count)
-          st.success("Conteggio aggiornato!")
-          st.rerun()
-
-      st.markdown("**Modifica puntate singole nella tabella:**")
-      st.caption(
-          "Significato stati: `V` = Visto | `S` = Pronto/Scaricato | `N` = Non"
-          " scaricato"
-      )
-
-      editable_df = sub_df[["S", "E", "STATO", "DATA"]].copy()
-      edited_data = st.data_editor(
-          editable_df,
-          column_config={
-              "S": st.column_config.NumberColumn("Stagione", disabled=True),
-              "E": st.column_config.NumberColumn("Episodio", disabled=True),
-              "STATO": st.column_config.SelectboxColumn(
-                  "Stato", options=["V", "S", "N"], required=True
-              ),
-              "DATA": st.column_config.TextColumn("Data Visione"),
-          },
-          use_container_width=True,
-          hide_index=True,
-          key=f"editor_{selected_show}",
-      )
-
-      if st.button("💾 Salva Modifiche Tabella Puntate", key="save_table_edits"):
-        for _, ed_row in edited_data.iterrows():
-          m_ep = (
-              (st.session_state.df["TELEFILM"] == selected_show)
-              & (st.session_state.df["S"] == ed_row["S"])
-              & (st.session_state.df["E"] == ed_row["E"])
-          )
-          st.session_state.df.loc[m_ep, "STATO"] = ed_row["STATO"]
-          st.session_state.df.loc[m_ep, "DATA"] = (
-              str(ed_row["DATA"]) if pd.notnull(ed_row["DATA"]) else ""
-          )
-        st.success("Modifiche salvate con successo nel database!")
+        st.success(f"Serie '{new_title}' aggiunta con successo!")
         st.rerun()
-
-  st.markdown("---")
-
-  with st.expander("🎭 Personalizza Punteggi Generi (Algoritmo)", expanded=False):
-    st.caption(
-        "Modifica i punti bonus assegnati dall'algoritmo a ciascun genere:"
-    )
-    updated_scores = {}
-    for g, score in st.session_state.genre_scores.items():
-      updated_scores[g] = st.number_input(
-          f"Punti per {g}", min_value=0, value=int(score), key=f"g_score_{g}"
-      )
-    if st.button("💾 Salva Punteggi Generi"):
-      st.session_state.genre_scores = updated_scores
-      st.success("Punteggi generi aggiornati!")
-      st.rerun()
-
-  st.markdown("---")
-
-  st.subheader("📥 Download Backup Database")
-  csv_bytes = (
-      st.session_state.df.to_csv(index=False, sep=";", encoding="utf-8-sig")
-      .encode("utf-8-sig")
-  )
-  st.download_button(
-      label="💾 Scarica File CSV Aggiornato",
-      data=csv_bytes,
-      file_name=f"TELEFILM_BACKUP_{datetime.now().strftime('%Y%m%d')}.csv",
-      mime="text/csv",
-  )
