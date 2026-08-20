@@ -531,8 +531,11 @@ def render_cards(filtered_df, prefix="all"):
                 with c_popover:
                     count_key = f"input_viste_{prefix}_{idx}"
                     voto_key = f"input_voto_{prefix}_{idx}"
+                    
                     with st.popover("🛠️ Gestisci", use_container_width=True):
                         st.markdown(f"#### ⚙️ Modifica: {show_name}")
+                        
+                        # CORRETTO: Assicura che il valore nel session_state sia sempre sincronizzato con le puntate attuali se non è già impostato
                         if count_key not in st.session_state:
                             st.session_state[count_key] = viste
 
