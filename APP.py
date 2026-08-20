@@ -171,36 +171,35 @@ with st.sidebar:
   )
   st.session_state["tmdb_key"] = tmdb_key
 
-  if st.button(
-      "🖼️ Aggiorna Locandine Mancanti",
-      use_container_width=True,
-      disabled=not tmdb_key,
-  ):
-    updated_count = 0
-    progress_bar = st.progress(0)
-    total_items = len(st.session_state.df)
-
-    for idx, row in st.session_state.df.iterrows():
-      curr_loc = str(row.get("locandina", ""))
-      if (
-          curr_loc == PLACEHOLDER_POSTER
-          or curr_loc == "nan"
-          or not curr_loc.strip()
-      ):
-        poster_url = fetch_tmdb_poster(row["show"], tmdb_key)
-        if poster_url:
-          st.session_state.df.at[idx, "locandina"] = poster_url
-          updated_count += 1
-      if total_items > 0:
-        progress_bar.progress((idx + 1) / total_items)
-
-    progress_bar.empty()
-    if updated_count > 0:
-      save_data()
-      st.success(f"Trovate {updated_count} nuove locandine!")
-      st.rerun()
+  # Il pulsante ora è sempre cliccabile
+  if st.button("🖼️ Aggiorna Locandine Mancanti", use_container_width=True):
+    if not tmdb_key.strip():
+      st.error("⚠️ Inserisci prima la tua API Key TMDB nel campo sopra!")
     else:
-      st.info("Nessuna nuova locandina trovata o già tutte presenti.")
+      updated_count = 0
+      progress_bar = st.progress(0)
+      total_items = len(st.session_state.df)
+
+      for idx, row in st.session_state.df.iterrows():
+        curr_loc = str(row.get("locandina", ""))
+
+        # Controlla se la locandina NON è già un link di TMDB
+        if "image.tmdb.org" not in curr_loc:
+          poster_url = fetch_tmdb_poster(row["show"], tmdb_key)
+          if poster_url:
+            st.session_state.df.at[idx, "locandina"] = poster_url
+            updated_count += 1
+
+        if total_items > 0:
+          progress_bar.progress((idx + 1) / total_items)
+
+      progress_bar.empty()
+      if updated_count > 0:
+        save_data()
+        st.success(f"Trovate e salvate {updated_count} nuove locandine!")
+        st.rerun()
+      else:
+        st.info("Nessuna nuova locandina trovata o sono già tutte aggiornate.")
 
   st.markdown("---")
   st.header("⚙️ Gestione Dati")
