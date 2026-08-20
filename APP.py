@@ -165,7 +165,7 @@ with st.sidebar:
   st.header("🔑 Configurazione TMDB")
   tmdb_key = st.text_input(
       "Inserisci la tua API Key TMDB:",
-      value=st.session_state.get("tmdb_key", ""),
+      value="20df15041e975b04e0372df2462999a4",
       type="password",
       help="Ottieni la tua chiave gratuita su themoviedb.org",
   )
