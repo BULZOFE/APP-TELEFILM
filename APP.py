@@ -24,6 +24,12 @@ st.markdown(
     .badge-in-progress { background-color: #0284c7; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-not-started { background-color: #475569; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-voto { padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block; margin-left: 5px; }
+
+    [data-testid="stImage"] img {
+        border-radius: 8px;
+        max-height: 220px;
+        object-fit: cover;
+        
 </style>
 """,
     unsafe_allow_html=True,
