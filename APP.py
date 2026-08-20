@@ -276,7 +276,7 @@ with st.sidebar:
                     "Nessuna nuova locandina trovata o sono già tutte aggiornate."
                 )
 
-   st.markdown("---")
+    st.markdown("---")
     st.header("🎭 Gestione Voti Generi")
     st.caption(
         "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso. (Ordinati per voto decrescente)"
