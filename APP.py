@@ -277,47 +277,53 @@ with st.sidebar:
                 )
 
     st.markdown("---")
-    st.header("🎭 Gestione Voti Generi")
-    st.caption(
-        "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso. (Ordinati per voto decrescente)"
-    )
+    
+    # Inizializza lo stato dell'expander se non esiste
+    if "mostra_gestione_generi" not in st.session_state:
+        st.session_state.mostra_gestione_generi = False
 
-    generi_presenti = [
-        g
-        for g in st.session_state.df["genere"].dropna().unique()
-        if str(g).strip() not in ["", "N/D"]
-    ]
-
-    for gen in generi_presenti:
-        if gen not in st.session_state.voti_generi:
-            st.session_state.voti_generi[gen] = 50.0
-
-    generi_list = sorted(
-        generi_presenti,
-        key=lambda g: (-st.session_state.voti_generi.get(g, 50.0), g),
-    )
-
-    for gen in generi_list:
-        current_gen_voto = int(st.session_state.voti_generi[gen])
-        options_gen = list(range(0, 101, 5))
-        if current_gen_voto not in options_gen:
-            options_gen = sorted(list(set(options_gen + [current_gen_voto])))
-
-        new_val = st.selectbox(
-            f"Voto Genere: {gen} ({current_gen_voto})",
-            options=options_gen,
-            index=options_gen.index(current_gen_voto),
-            key=f"sel_voto_gen_{gen}",
+    # Usiamo un expander nella sidebar che funge da menu a scomparsa
+    with st.expander("🎭 Gestione Voti Generi", expanded=False):
+        st.caption(
+            "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso. (Ordinati per voto decrescente)"
         )
 
-        if new_val != current_gen_voto:
-            st.session_state.voti_generi[gen] = float(new_val)
-            recalculate_all_votes()
-            st.toast(
-                f"Voto per genere '{gen}' aggiornato a {new_val}. Voti serie ricalcolati!",
-                icon="🔄",
+        generi_presenti = [
+            g
+            for g in st.session_state.df["genere"].dropna().unique()
+            if str(g).strip() not in ["", "N/D"]
+        ]
+
+        for gen in generi_presenti:
+            if gen not in st.session_state.voti_generi:
+                st.session_state.voti_generi[gen] = 50.0
+
+        generi_list = sorted(
+            generi_presenti,
+            key=lambda g: (-st.session_state.voti_generi.get(g, 50.0), g),
+        )
+
+        for gen in generi_list:
+            current_gen_voto = int(st.session_state.voti_generi[gen])
+            options_gen = list(range(0, 101, 5))
+            if current_gen_voto not in options_gen:
+                options_gen = sorted(list(set(options_gen + [current_gen_voto])))
+
+            new_val = st.selectbox(
+                f"Voto Genere: {gen} ({current_gen_voto})",
+                options=options_gen,
+                index=options_gen.index(current_gen_voto),
+                key=f"sel_voto_gen_{gen}",
             )
-            st.rerun()
+
+            if new_val != current_gen_voto:
+                st.session_state.voti_generi[gen] = float(new_val)
+                recalculate_all_votes()
+                st.toast(
+                    f"Voto per genere '{gen}' aggiornato a {new_val}. Voti serie ricalcolati!",
+                    icon="🔄",
+                )
+                st.rerun()
 
     st.markdown("---")
     st.header("⚙️ Gestione Dati")
