@@ -276,28 +276,38 @@ with st.sidebar:
                     "Nessuna nuova locandina trovata o sono già tutte aggiornate."
                 )
 
-    st.markdown("---")
+   st.markdown("---")
     st.header("🎭 Gestione Voti Generi")
     st.caption(
-        "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso."
+        "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso. (Ordinati per voto decrescente)"
     )
 
-    generi_list = sorted([
+    # Raccoglie i generi presenti
+    generi_presenti = [
         g
         for g in st.session_state.df["genere"].dropna().unique()
         if str(g).strip() not in ["", "N/D"]
-    ])
-    for gen in generi_list:
+    ]
+
+    # Inizializza i voti mancanti nel session state
+    for gen in generi_presenti:
         if gen not in st.session_state.voti_generi:
             st.session_state.voti_generi[gen] = 50.0
 
+    # Ordina i generi in base al voto (dal più alto al più basso) e a parità di voto in ordine alfabetico
+    generi_list = sorted(
+        generi_presenti,
+        key=lambda g: (-st.session_state.voti_generi.get(g, 50.0), g),
+    )
+
+    for gen in generi_list:
         current_gen_voto = int(st.session_state.voti_generi[gen])
         options_gen = list(range(0, 101, 5))
         if current_gen_voto not in options_gen:
             options_gen = sorted(list(set(options_gen + [current_gen_voto])))
 
         new_val = st.selectbox(
-            f"Voto Genere: {gen}",
+            f"Voto Genere: {gen} ({current_gen_voto})",
             options=options_gen,
             index=options_gen.index(current_gen_voto),
             key=f"sel_voto_gen_{gen}",
