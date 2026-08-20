@@ -4,9 +4,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(
-    page_title="TV Tracker Pro", page_icon="📺", layout="wide"
-)
+st.set_page_config(page_title="TV Tracker Pro", page_icon="📺", layout="wide")
 
 # Nomi file supportati nella cartella di lavoro
 POSSIBILI_FILE = [
@@ -25,10 +23,30 @@ st.markdown(
     .badge-completed { background-color: #059669; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-in-progress { background-color: #0284c7; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-not-started { background-color: #475569; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
+    .badge-voto { padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block; margin-left: 5px; }
 </style>
 """,
     unsafe_allow_html=True,
 )
+
+
+def get_voto_badge_html(voto):
+    """Restituisce il tag HTML del badge per il voto in base al valore (0-100) con colori differenti."""
+    try:
+        voto_val = float(voto)
+    except (ValueError, TypeError):
+        voto_val = 50.0
+
+    if voto_val >= 80:
+        style = "background-color: #15803d; color: #ffffff;"
+    elif voto_val >= 60:
+        style = "background-color: #22c55e; color: #ffffff;"
+    elif voto_val >= 40:
+        style = "background-color: #eab308; color: #000000;"
+    else:
+        style = "background-color: #ef4444; color: #ffffff;"
+
+    return f'<span class="badge-voto" style="{style}">VOTO: {int(voto_val) if voto_val.is_integer() else round(voto_val, 1)}</span>'
 
 
 # --- FUNZIONE API TMDB ---
@@ -94,9 +112,13 @@ def load_data():
 
                 viste = 0
                 if "STATO" in group.columns:
-                    viste = len(group[group["STATO"].astype(str).str.upper() == "V"])
+                    viste = len(
+                        group[group["STATO"].astype(str).str.upper() == "V"]
+                    )
                 elif "PUNT VISTE" in group.columns:
-                    val_max = pd.to_numeric(group["PUNT VISTE"], errors="coerce").max()
+                    val_max = pd.to_numeric(
+                        group["PUNT VISTE"], errors="coerce"
+                    ).max()
                     viste = int(val_max) if pd.notna(val_max) else 0
 
                 stagione = 1
@@ -108,8 +130,21 @@ def load_data():
                 genere = "N/D"
                 if "GENERE" in group.columns:
                     genres = group["GENERE"].dropna().unique()
-                    if len(genres) > 0 and str(genres[0]).strip() not in ["", "nan"]:
+                    if (
+                        len(genres) > 0
+                        and str(genres[0]).strip() not in ["", "nan"]
+                    ):
                         genere = str(genres[0]).strip()
+
+                voto = 50.0
+                if "VALORE" in group.columns:
+                    vals = pd.to_numeric(
+                        group["VALORE"], errors="coerce"
+                    ).dropna()
+                    if not vals.empty:
+                        val_num = float(vals.iloc[0])
+                        if 0 <= val_num <= 100:
+                            voto = val_num
 
                 series_list.append({
                     "show": show_str,
@@ -117,6 +152,7 @@ def load_data():
                     "viste": viste,
                     "totali": totali,
                     "genere": genere,
+                    "voto": voto,
                     "preferito": False,
                     "locandina": PLACEHOLDER_POSTER,
                 })
@@ -144,13 +180,26 @@ def save_data():
 if "df" not in st.session_state or st.session_state.df.empty:
     st.session_state.df = load_data()
 
+if "voti_generi" not in st.session_state:
+    st.session_state.voti_generi = {}
+
 # Normalizzazione colonne
 if not st.session_state.df.empty:
-    req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
+    req_cols = [
+        "show",
+        "stagione",
+        "viste",
+        "totali",
+        "genere",
+        "voto",
+        "preferito",
+    ]
     for col in req_cols:
         if col not in st.session_state.df.columns:
             if col == "preferito":
                 st.session_state.df[col] = False
+            elif col == "voto":
+                st.session_state.df[col] = 50.0
             elif col in ["viste", "totali", "stagione"]:
                 st.session_state.df[col] = 0
             else:
@@ -158,6 +207,25 @@ if not st.session_state.df.empty:
 
     if "locandina" not in st.session_state.df.columns:
         st.session_state.df["locandina"] = PLACEHOLDER_POSTER
+
+    # Inizializza i voti predefiniti per i generi esistenti
+    generi_presenti = (
+        set(st.session_state.df["genere"].dropna().unique()) - {"", "N/D"}
+    )
+    for g in generi_presenti:
+        if g not in st.session_state.voti_generi:
+            st.session_state.voti_generi[g] = 50.0
+
+
+def recalculate_all_votes():
+    """Ricalcola in modo dinamico i voti di tutte le serie in base ai voti dei generi."""
+    for idx, row in st.session_state.df.iterrows():
+        gen = row.get("genere", "N/D")
+        if gen in st.session_state.voti_generi:
+            st.session_state.df.at[idx, "voto"] = float(
+                st.session_state.voti_generi[gen]
+            )
+    save_data()
 
 
 # --- SIDEBAR ---
@@ -171,7 +239,6 @@ with st.sidebar:
     )
     st.session_state["tmdb_key"] = tmdb_key
 
-    # Il pulsante ora è sempre cliccabile
     if st.button("🖼️ Aggiorna Locandine Mancanti", use_container_width=True):
         if not tmdb_key.strip():
             st.error("⚠️ Inserisci prima la tua API Key TMDB nel campo sopra!")
@@ -183,7 +250,6 @@ with st.sidebar:
             for idx, row in st.session_state.df.iterrows():
                 curr_loc = str(row.get("locandina", ""))
 
-                # Controlla se la locandina NON è già un link di TMDB
                 if "image.tmdb.org" not in curr_loc:
                     poster_url = fetch_tmdb_poster(row["show"], tmdb_key)
                     if poster_url:
@@ -199,7 +265,45 @@ with st.sidebar:
                 st.success(f"Trovate e salvate {updated_count} nuove locandine!")
                 st.rerun()
             else:
-                st.info("Nessuna nuova locandina trovata o sono già tutte aggiornate.")
+                st.info(
+                    "Nessuna nuova locandina trovata o sono già tutte aggiornate."
+                )
+
+    st.markdown("---")
+    st.header("🎭 Gestione Voti Generi")
+    st.caption(
+        "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso."
+    )
+
+    generi_list = sorted([
+        g
+        for g in st.session_state.df["genere"].dropna().unique()
+        if str(g).strip() not in ["", "N/D"]
+    ])
+    for gen in generi_list:
+        if gen not in st.session_state.voti_generi:
+            st.session_state.voti_generi[gen] = 50.0
+
+        current_gen_voto = int(st.session_state.voti_generi[gen])
+        options_gen = list(range(0, 101, 5))
+        if current_gen_voto not in options_gen:
+            options_gen = sorted(list(set(options_gen + [current_gen_voto])))
+
+        new_val = st.selectbox(
+            f"Voto Genere: {gen}",
+            options=options_gen,
+            index=options_gen.index(current_gen_voto),
+            key=f"sel_voto_gen_{gen}",
+        )
+
+        if new_val != current_gen_voto:
+            st.session_state.voti_generi[gen] = float(new_val)
+            recalculate_all_votes()
+            st.toast(
+                f"Voto per genere '{gen}' aggiornato a {new_val}. Voti serie ricalcolati!",
+                icon="🔄",
+            )
+            st.rerun()
 
     st.markdown("---")
     st.header("⚙️ Gestione Dati")
@@ -226,6 +330,13 @@ def set_show_watched_count(show_name, count):
     st.session_state.df.loc[
         st.session_state.df["show"] == show_name, "viste"
     ] = int(count)
+    save_data()
+
+
+def set_show_voto(show_name, voto_val):
+    st.session_state.df.loc[
+        st.session_state.df["show"] == show_name, "voto"
+    ] = float(voto_val)
     save_data()
 
 
@@ -293,7 +404,11 @@ with col_search:
 with col_filter_genre:
     generi_disponibili = ["Tutti"]
     if not df.empty and "genere" in df.columns:
-        generi_disponibili += sorted([g for g in df["genere"].dropna().unique().tolist() if str(g).strip() not in ["", "N/D"]])
+        generi_disponibili += sorted([
+            g
+            for g in df["genere"].dropna().unique().tolist()
+            if str(g).strip() not in ["", "N/D"]
+        ])
     selected_genre = st.selectbox("🎭 Filtra per Genere", generi_disponibili)
 
 tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
@@ -308,7 +423,10 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 def render_cards(filtered_df, prefix="all"):
     if search_query:
         filtered_df = filtered_df[
-            filtered_df["show"].astype(str).str.lower().str.contains(search_query)
+            filtered_df["show"]
+            .astype(str)
+            .str.lower()
+            .str.contains(search_query)
         ]
 
     if selected_genre != "Tutti":
@@ -331,6 +449,7 @@ def render_cards(filtered_df, prefix="all"):
         stagione = int(row["stagione"])
         genere = row["genere"]
         is_fav = bool(row["preferito"])
+        voto = row.get("voto", 50.0)
 
         img_url = (
             row.get("locandina", PLACEHOLDER_POSTER)
@@ -347,6 +466,7 @@ def render_cards(filtered_df, prefix="all"):
         else:
             badge = '<span class="badge-not-started">DA INIZIARE</span>'
 
+        voto_badge = get_voto_badge_html(voto)
         fav_icon = "⭐" if is_fav else "☆"
 
         with st.container():
@@ -356,14 +476,19 @@ def render_cards(filtered_df, prefix="all"):
                 st.image(img_url, use_container_width=True)
 
             with col_content:
-                st.markdown(f"### {show_name} {badge}", unsafe_allow_html=True)
+                st.markdown(
+                    f"### {show_name} {badge} {voto_badge}",
+                    unsafe_allow_html=True,
+                )
                 st.caption(f"Stagione {stagione} • Genere: {genere}")
                 st.progress(pct / 100)
 
                 c_info, c_plus1, c_popover, c_fav = st.columns([3, 1.5, 1.5, 1])
 
                 with c_info:
-                    st.write(f"Avanzamento: **{viste}/{totali}** puntate ({pct}%)")
+                    st.write(
+                        f"Avanzamento: **{viste}/{totali}** puntate ({pct}%)"
+                    )
 
                 with c_plus1:
                     if viste < totali:
@@ -384,6 +509,7 @@ def render_cards(filtered_df, prefix="all"):
 
                 with c_popover:
                     count_key = f"input_viste_{prefix}_{idx}"
+                    voto_key = f"input_voto_{prefix}_{idx}"
                     with st.popover("🛠️ Gestisci", use_container_width=True):
                         st.markdown(f"#### ⚙️ Modifica: {show_name}")
                         if count_key not in st.session_state:
@@ -395,6 +521,23 @@ def render_cards(filtered_df, prefix="all"):
                             max_value=max(totali, 1),
                             step=1,
                             key=count_key,
+                        )
+
+                        # Menu a tendina per il voto della serie
+                        voto_curr = int(voto)
+                        voto_options = list(range(0, 101, 5))
+                        if voto_curr not in voto_options:
+                            voto_options = sorted(
+                                list(set(voto_options + [voto_curr]))
+                            )
+
+                        st.selectbox(
+                            "Voto Serie (Menu a tendina):",
+                            options=voto_options,
+                            index=voto_options.index(voto_curr)
+                            if voto_curr in voto_options
+                            else 10,
+                            key=voto_key,
                         )
 
                         if st.button(
@@ -423,8 +566,15 @@ def render_cards(filtered_df, prefix="all"):
                                 type="primary",
                                 use_container_width=True,
                             ):
-                                set_show_watched_count(show_name, st.session_state[count_key])
-                                st.toast(f"Progresso salvato per '{show_name}'!")
+                                set_show_watched_count(
+                                    show_name, st.session_state[count_key]
+                                )
+                                set_show_voto(
+                                    show_name, st.session_state[voto_key]
+                                )
+                                st.toast(
+                                    f"Modifiche salvate per '{show_name}'!"
+                                )
                                 st.rerun()
 
                         with btn_exit:
@@ -437,14 +587,20 @@ def render_cards(filtered_df, prefix="all"):
                                 st.rerun()
 
                         st.markdown("---")
-                        if st.button("🗑️ Elimina Serie", key=f"del_{prefix}_{idx}", use_container_width=True):
+                        if st.button(
+                            "🗑️ Elimina Serie",
+                            key=f"del_{prefix}_{idx}",
+                            use_container_width=True,
+                        ):
                             delete_show(show_name)
                             st.toast(f"Serie '{show_name}' eliminata.")
                             st.rerun()
 
                 with c_fav:
                     if st.button(
-                        fav_icon, key=f"btn_fav_{prefix}_{idx}", use_container_width=True
+                        fav_icon,
+                        key=f"btn_fav_{prefix}_{idx}",
+                        use_container_width=True,
                     ):
                         toggle_favorite(show_name)
                         st.rerun()
@@ -485,12 +641,30 @@ with tab_add:
         c_add1, c_add2 = st.columns(2)
         with c_add1:
             new_title = st.text_input("Titolo Serie *")
-            new_season = st.number_input("Stagione", min_value=1, value=1, step=1)
-            new_genre = st.text_input("Genere (es. DRAMA, COMEDY, ACTION)", value="DRAMA")
+            new_season = st.number_input(
+                "Stagione", min_value=1, value=1, step=1
+            )
+            new_genre = st.text_input(
+                "Genere (es. DRAMA, COMEDY, ACTION)", value="DRAMA"
+            )
         with c_add2:
-            new_tot = st.number_input("Puntate Totali", min_value=1, value=10, step=1)
-            new_viste = st.number_input("Puntate Viste", min_value=0, value=0, step=1)
+            new_tot = st.number_input(
+                "Puntate Totali", min_value=1, value=10, step=1
+            )
+            new_viste = st.number_input(
+                "Puntate Viste", min_value=0, value=0, step=1
+            )
             new_fav = st.checkbox("Aggiungi ai Preferiti", value=False)
+
+        st.markdown("---")
+        st.markdown("##### 🎯 Voto Iniziale Serie / Genere")
+        voto_options_add = list(range(0, 101, 5))
+        new_voto_select = st.selectbox(
+            "Seleziona Voto per questa Serie (o Voto per il nuovo Genere):",
+            options=voto_options_add,
+            index=10,  # Default 50
+            help="Se il genere specificato è nuovo, questo voto verrà assegnato anche al genere.",
+        )
 
         submit_btn = st.form_submit_button("➕ Salva Serie", type="primary")
 
@@ -505,17 +679,38 @@ with tab_add:
                     if fetched:
                         poster_url = fetched
 
+                formatted_genre = (
+                    new_genre.strip().upper() if new_genre.strip() else "N/D"
+                )
+
+                if (
+                    formatted_genre != "N/D"
+                    and formatted_genre not in st.session_state.voti_generi
+                ):
+                    st.session_state.voti_generi[formatted_genre] = float(
+                        new_voto_select
+                    )
+                    st.toast(
+                        f"Nuovo genere '{formatted_genre}' registrato con voto {new_voto_select}!",
+                        icon="🎭",
+                    )
+
                 new_row = pd.DataFrame([{
                     "show": new_title.strip(),
                     "stagione": int(new_season),
                     "viste": int(min(new_viste, new_tot)),
                     "totali": int(new_tot),
-                    "genere": new_genre.strip().upper() if new_genre.strip() else "N/D",
+                    "genere": formatted_genre,
+                    "voto": float(new_voto_select),
                     "preferito": bool(new_fav),
-                    "locandina": poster_url
+                    "locandina": poster_url,
                 }])
 
-                st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
+                st.session_state.df = pd.concat(
+                    [st.session_state.df, new_row], ignore_index=True
+                )
                 save_data()
-                st.success(f"Serie '{new_title.strip()}' aggiunta con successo!")
+                st.success(
+                    f"Serie '{new_title.strip()}' aggiunta con successo!"
+                )
                 st.rerun()
