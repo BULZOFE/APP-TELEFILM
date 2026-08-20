@@ -66,7 +66,6 @@ def process_dataframe(df):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
             
-    # Normalizzazione drastica di VALORE per prevenire qualsiasi errore min/max
     if 'VALORE' in df.columns:
         df['VALORE'] = df['VALORE'].clip(lower=0.0, upper=100.0)
         
@@ -103,11 +102,11 @@ if st.session_state.df is None:
         st.rerun()
     st.stop()
 
-# Calcolo Punteggio Algoritmo
+# Calcolo Punteggio Algoritmo Aggiornato
 def calculate_score(series_df):
     valore = float(series_df['VALORE'].iloc[0])
     voto_personale = min(100.0, max(0.0, valore)) if valore > 0 else 70.0
-    comp_voto = voto_personale * 0.30
+    comp_voto = voto_personale * 0.25 # max 25 pt
     
     genere = series_df['GENERE'].iloc[0]
     p_genere = st.session_state.genre_scores.get(genere, 5)
@@ -116,31 +115,101 @@ def calculate_score(series_df):
     if len(ready_eps) == 0:
         return 0
     
+    # 1. BOOSTER PROGRESSO VISIONE (più puntate hai visto, più sale il punteggio)
+    tot_eps = len(series_df)
+    viste_eps = len(series_df[series_df['STATO'] == 'V'])
+    perc_viste = viste_eps / tot_eps if tot_eps > 0 else 0
+    bonus_progresso = round(perc_viste * 25, 1) # max 25 pt
+    
+    # 2. MALUS VETUSTÀ PUNTATA (più la puntata 'S' è vecchia, più perde punti)
     first_ready = ready_eps.sort_values(by=['S', 'E']).iloc[0]
-    curr_season = first_ready['S']
-    season_eps = series_df[series_df['S'] == curr_season]
-    bonus_season = 15 if (season_eps['STATO'] == 'S').all() else 0
+    malus_eta = 0
+    if pd.notnull(first_ready['DATA_VISIONA']):
+        giorni_attesa = (datetime.now() - first_ready['DATA_VISIONA']).days
+        if giorni_attesa > 30:
+            malus_eta = min(20, (giorni_attesa - 30) // 15 * 2) # fino a -20 pt
+            
+    # 3. BONUS NUOVA SERIE RIDOTTO (passato da 20 a soli 5 pt)
+    is_nuova = series_df['NUOVA'].iloc[0] == 1
+    has_seen_any = viste_eps > 0
+    bonus_nuova = 5 if (is_nuova and not has_seen_any) else 0
     
-    unwatched = series_df[series_df['STATO'] != 'V']
-    bonus_all = 25 if len(unwatched) > 0 and (unwatched['STATO'] == 'S').all() else 0
-    
+    # Inerzia recente
     three_months = datetime.now() - timedelta(days=90)
     recent = series_df[(series_df['STATO'] == 'V') & (series_df['DATA_VISIONA'] >= three_months)]
-    bonus_inerzia = min(30, len(recent) * 3)
+    bonus_inerzia = min(20, len(recent) * 2)
     
-    is_nuova = series_df['NUOVA'].iloc[0] == 1
-    s1e1_v = len(series_df[(series_df['S'] == 1) & (series_df['E'] == 1) & (series_df['STATO'] == 'V')]) > 0
-    bonus_nuova = 20 if (is_nuova and not s1e1_v) else 0
+    # Bonus intera stagione pronta
+    curr_season = first_ready['S']
+    season_eps = series_df[series_df['S'] == curr_season]
+    bonus_season = 10 if (season_eps['STATO'] == 'S').all() else 0
     
+    # Malus cancellata
     is_finito = series_df['FINITO'].iloc[0] == 1
-    malus_cancellata = 20 if is_finito else 0
+    malus_cancellata = 15 if is_finito else 0
     
-    return round(comp_voto + p_genere + bonus_season + bonus_all + bonus_inerzia + bonus_nuova - malus_cancellata, 1)
+    totale = comp_voto + p_genere + bonus_progresso + bonus_inerzia + bonus_season + bonus_nuova - malus_eta - malus_cancellata
+    return round(max(0.0, totale), 1)
+
+# Funzione per Renderizzare le Card
+def render_show_cards(rank_df):
+    for idx, row in rank_df.iterrows():
+        poster_url = get_poster_url(row['show'])
+        val_txt = f"{row['valore']:.0f}/100" if row['valore'] > 0 else "N/D"
+        
+        col_img, col_info = st.columns([1, 2.2])
+        with col_img:
+            st.image(poster_url, use_container_width=True)
+            
+        with col_info:
+            st.markdown(f"""
+            <div style="margin-bottom: 6px;">
+                <span class="badge-score">⭐ {row['score']} pt</span>
+                <span class="badge-user-score">👤 {val_txt}</span>
+            </div>
+            <div class="card-title">{row['show']}</div>
+            <div>
+                <span class="badge-genre">{row['genere']}</span>
+                <span class="badge-provider">📺 {row['provider']}</span>
+            </div>
+            <div class="ep-box">
+                <strong>Prossimo:</strong> S{row['season']:02d}E{row['episode']:02d}<br>
+                <small>Progresso: {row['viste']}/{row['totali']} ep ({row['perc']:.0f}%)</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        col_b1, col_b2 = st.columns([2.5, 1])
+        with col_b1:
+            if st.button(f"▶️ GUARDA S{row['season']:02d}E{row['episode']:02d}", key=f"btn_v_{row['show']}"):
+                mask = (st.session_state.df['TELEFILM'] == row['show']) & \
+                       (st.session_state.df['S'] == row['season']) & \
+                       (st.session_state.df['E'] == row['episode'])
+                st.session_state.df.loc[mask, 'STATO'] = 'V'
+                st.session_state.df.loc[mask, 'DATA'] = datetime.now().strftime('%d/%m/%y')
+                st.session_state.df.loc[mask, 'DATA_VISIONA'] = datetime.now()
+                st.success(f"Segnato S{row['season']:02d}E{row['episode']:02d} come VISTO!")
+                st.rerun()
+        with col_b2:
+            with st.popover("✏️ Voto"):
+                val_default = float(row['valore'])
+                nuovo_voto = st.number_input(
+                    f"Voto per {row['show']}",
+                    min_value=0.0,
+                    value=val_default,
+                    step=1.0,
+                    key=f"inp_val_{row['show']}"
+                )
+                if st.button("Salva Voto", key=f"save_val_{row['show']}"):
+                    mask_show = st.session_state.df['TELEFILM'] == row['show']
+                    st.session_state.df.loc[mask_show, 'VALORE'] = nuovo_voto
+                    st.success("Voto salvato!")
+                    st.rerun()
+        st.markdown("<hr style='border:1px solid #1e293b; margin:15px 0;'>", unsafe_allow_html=True)
 
 # Tab principali
 tab1, tab2, tab3, tab4 = st.tabs(["🛋️ Divano", "📥 Aggiorna N➜S", "📁 Completate", "⚙️ Impostazioni"])
 
-# TAB 1: DIVANO
+# TAB 1: DIVANO (CON SEPARAZIONE INIZIATE / DA INIZIARE)
 with tab1:
     df_curr = st.session_state.df
     shows_with_S = df_curr[df_curr['STATO'] == 'S']['TELEFILM'].unique()
@@ -154,67 +223,36 @@ with tab1:
             score = calculate_score(s_df)
             valore_pers = float(s_df['VALORE'].iloc[0])
             next_ep = s_df[s_df['STATO'] == 'S'].sort_values(by=['S', 'E']).iloc[0]
+            
+            tot_eps = len(s_df)
+            viste_eps = len(s_df[s_df['STATO'] == 'V'])
+            
             rankings.append({
                 'show': show, 'score': score, 'valore': valore_pers,
                 'season': int(next_ep['S']), 'episode': int(next_ep['E']),
-                'genere': s_df['GENERE'].iloc[0], 'provider': s_df['ABBONAMENTO'].iloc[0]
+                'genere': s_df['GENERE'].iloc[0], 'provider': s_df['ABBONAMENTO'].iloc[0],
+                'viste': viste_eps, 'totali': tot_eps, 'perc': (viste_eps / tot_eps * 100) if tot_eps > 0 else 0
             })
         
-        rank_df = pd.DataFrame(rankings).sort_values(by='score', ascending=False)
-        st.caption(f"Trovate {len(rank_df)} serie pronte alla visione")
+        full_rank_df = pd.DataFrame(rankings).sort_values(by='score', ascending=False)
         
-        for idx, row in rank_df.iterrows():
-            poster_url = get_poster_url(row['show'])
-            val_txt = f"{row['valore']:.0f}/100" if row['valore'] > 0 else "N/D"
-            
-            # Card Layout con Immagine + Info
-            col_img, col_info = st.columns([1, 2.2])
-            
-            with col_img:
-                st.image(poster_url, use_container_width=True)
+        # Filtro tra Serie Iniziate (almeno 1 episodio visto) e Da Iniziare (0 episodi visti)
+        df_started = full_rank_df[full_rank_df['viste'] > 0]
+        df_new = full_rank_df[full_rank_df['viste'] == 0]
+        
+        sub_tab1, sub_tab2 = st.tabs([f"▶️ In Corso ({len(df_started)})", f"🆕 Da Iniziare ({len(df_new)})"])
+        
+        with sub_tab1:
+            if len(df_started) == 0:
+                st.caption("Nessuna serie già iniziata tra quelle pronte.")
+            else:
+                render_show_cards(df_started)
                 
-            with col_info:
-                st.markdown(f"""
-                <div style="margin-bottom: 6px;">
-                    <span class="badge-score">⭐ {row['score']} pt</span>
-                    <span class="badge-user-score">👤 {val_txt}</span>
-                </div>
-                <div class="card-title">{row['show']}</div>
-                <div>
-                    <span class="badge-genre">{row['genere']}</span>
-                    <span class="badge-provider">📺 {row['provider']}</span>
-                </div>
-                <div class="ep-box"><strong>Prossimo:</strong> S{row['season']:02d}E{row['episode']:02d}</div>
-                """, unsafe_allow_html=True)
-            
-            # Azioni
-            col_b1, col_b2 = st.columns([2.5, 1])
-            with col_b1:
-                if st.button(f"▶️ GUARDA S{row['season']:02d}E{row['episode']:02d}", key=f"btn_v_{row['show']}"):
-                    mask = (st.session_state.df['TELEFILM'] == row['show']) & \
-                           (st.session_state.df['S'] == row['season']) & \
-                           (st.session_state.df['E'] == row['episode'])
-                    st.session_state.df.loc[mask, 'STATO'] = 'V'
-                    st.session_state.df.loc[mask, 'DATA'] = datetime.now().strftime('%d/%m/%y')
-                    st.session_state.df.loc[mask, 'DATA_VISIONA'] = datetime.now()
-                    st.success(f"Segnato S{row['season']:02d}E{row['episode']:02d} come VISTO!")
-                    st.rerun()
-            with col_b2:
-                with st.popover("✏️ Voto"):
-                    val_default = float(row['valore'])
-                    nuovo_voto = st.number_input(
-                        f"Voto per {row['show']}",
-                        min_value=0.0,
-                        value=val_default,
-                        step=1.0,
-                        key=f"inp_val_{row['show']}"
-                    )
-                    if st.button("Salva Voto", key=f"save_val_{row['show']}"):
-                        mask_show = st.session_state.df['TELEFILM'] == row['show']
-                        st.session_state.df.loc[mask_show, 'VALORE'] = nuovo_voto
-                        st.success("Voto salvato!")
-                        st.rerun()
-            st.markdown("<hr style='border:1px solid #1e293b; margin:15px 0;'>", unsafe_allow_html=True)
+        with sub_tab2:
+            if len(df_new) == 0:
+                st.caption("Nessuna nuova serie da iniziare tra quelle pronte.")
+            else:
+                render_show_cards(df_new)
 
 # TAB 2: AGGIORNA N -> S
 with tab2:
@@ -268,7 +306,6 @@ with tab3:
 with tab4:
     st.subheader("⚙️ Impostazioni e Backup")
     
-    # Personalizzazione Punteggi Generi
     with st.expander("🎭 Personalizza Punteggi Generi (Algoritmo)", expanded=False):
         st.caption("Modifica i punti bonus assegnati dall'algoritmo a ciascun genere:")
         updated_scores = {}
@@ -281,7 +318,6 @@ with tab4:
             
     st.markdown("---")
     
-    # Download Backup CSV
     st.subheader("📥 Download Backup Database")
     csv_bytes = st.session_state.df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
     st.download_button(
