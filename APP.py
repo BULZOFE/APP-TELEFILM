@@ -64,8 +64,12 @@ def process_dataframe(df):
     
     for col in ['S', 'E', 'PUNT TOT', 'PUNT VISTE', 'PERC', 'NUOVA', 'FINITO', 'VALORE', 'POS CLASSIFICA']:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+            df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
             
+    # Normalizzazione drastica di VALORE per prevenire qualsiasi errore min/max
+    if 'VALORE' in df.columns:
+        df['VALORE'] = df['VALORE'].clip(lower=0.0, upper=100.0)
+        
     df['DATA_VISIONA'] = pd.to_datetime(df['DATA'].astype(str), format='%d/%m/%y', errors='coerce')
     return df
 
@@ -101,8 +105,8 @@ if st.session_state.df is None:
 
 # Calcolo Punteggio Algoritmo
 def calculate_score(series_df):
-    valore = series_df['VALORE'].iloc[0]
-    voto_personale = min(100, max(0, valore)) if valore > 0 else 70.0
+    valore = float(series_df['VALORE'].iloc[0])
+    voto_personale = min(100.0, max(0.0, valore)) if valore > 0 else 70.0
     comp_voto = voto_personale * 0.30
     
     genere = series_df['GENERE'].iloc[0]
@@ -148,7 +152,7 @@ with tab1:
         for show in shows_with_S:
             s_df = df_curr[df_curr['TELEFILM'] == show]
             score = calculate_score(s_df)
-            valore_pers = s_df['VALORE'].iloc[0]
+            valore_pers = float(s_df['VALORE'].iloc[0])
             next_ep = s_df[s_df['STATO'] == 'S'].sort_values(by=['S', 'E']).iloc[0]
             rankings.append({
                 'show': show, 'score': score, 'valore': valore_pers,
@@ -197,12 +201,10 @@ with tab1:
                     st.rerun()
             with col_b2:
                 with st.popover("✏️ Voto"):
-                    # Normalizzazione valore per evitare crash Streamlit
-                    val_default = min(100.0, max(0.0, float(row['valore'])))
+                    val_default = float(row['valore'])
                     nuovo_voto = st.number_input(
                         f"Voto per {row['show']}",
                         min_value=0.0,
-                        max_value=100.0,
                         value=val_default,
                         step=1.0,
                         key=f"inp_val_{row['show']}"
@@ -271,7 +273,7 @@ with tab4:
         st.caption("Modifica i punti bonus assegnati dall'algoritmo a ciascun genere:")
         updated_scores = {}
         for g, score in st.session_state.genre_scores.items():
-            updated_scores[g] = st.number_input(f"Punti per {g}", min_value=0, max_value=30, value=int(score), key=f"g_score_{g}")
+            updated_scores[g] = st.number_input(f"Punti per {g}", min_value=0, value=int(score), key=f"g_score_{g}")
         if st.button("💾 Salva Punteggi Generi"):
             st.session_state.genre_scores = updated_scores
             st.success("Punteggi generi aggiornati!")
