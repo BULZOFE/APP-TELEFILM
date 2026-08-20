@@ -49,10 +49,10 @@ def get_voto_badge_html(voto):
     return f'<span class="badge-voto" style="{style}">VOTO: {int(voto_val) if voto_val.is_integer() else round(voto_val, 1)}</span>'
 
 
-# --- FUNZIONE API TMDB ---
+# --- FUNZIONE API TMDB (Ottimizzata con w342) ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_tmdb_poster(title, api_key):
-    """Recupera l'URL della locandina da TMDB per una serie TV."""
+    """Recupera l'URL della locandina da TMDB per una serie TV in formato ridotto w342."""
     if not api_key or not title:
         return None
     try:
@@ -61,7 +61,8 @@ def fetch_tmdb_poster(title, api_key):
         if response.status_code == 200:
             results = response.json().get("results", [])
             if results and results[0].get("poster_path"):
-                return f"https://image.tmdb.org/t/p/w500{results[0]['poster_path']}"
+                # Modificato da w500 a w342 per ottimizzare peso e velocità
+                return f"https://image.tmdb.org/t/p/w342{results[0]['poster_path']}"
     except Exception:
         pass
     return None
