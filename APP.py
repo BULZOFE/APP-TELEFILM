@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import requests
 from datetime import datetime, timedelta
 
 # Configurazione Pagina - Ottimizzata per iPhone
@@ -12,24 +13,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Tema Scuro ed Elementi Grafici Stile iOS / Flashcard
+# Tema Scuro ed Elementi Grafici Stile iOS / Mobile-First
 st.markdown("""
 <style>
     body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     .stApp { background-color: #0f172a; }
     .card {
         background: linear-gradient(145deg, #1e293b, #0f172a);
-        border-radius: 18px;
-        padding: 20px;
-        border: 1px solid #334155;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-        margin-bottom: 20px;
+        border-radius: 18px; padding: 16px; border: 1px solid #334155;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); margin-bottom: 20px;
     }
-    .card-title { font-size: 22px; font-weight: 800; color: #38bdf8; margin-bottom: 6px; }
-    .badge-score { background-color: #f59e0b; color: #000; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 14px; float: right; }
+    .card-title { font-size: 20px; font-weight: 800; color: #38bdf8; margin-bottom: 6px; }
+    .badge-score { background-color: #f59e0b; color: #000; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 13px; float: right; }
+    .badge-user-score { background-color: #10b981; color: #ffffff; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 13px; margin-right: 5px; }
     .badge-genre { background-color: #334155; color: #94a3b8; padding: 3px 8px; border-radius: 8px; font-size: 12px; margin-right: 6px; }
     .badge-provider { background-color: #0284c7; color: white; padding: 3px 8px; border-radius: 8px; font-size: 12px; }
-    .ep-box { background: #1e293b; border-left: 4px solid #38bdf8; padding: 12px; margin: 15px 0; border-radius: 6px; }
+    .ep-box { background: #1e293b; border-left: 4px solid #38bdf8; padding: 10px; margin: 12px 0; border-radius: 6px; font-size: 14px; }
     .stButton>button {
         width: 100%; background-color: #2563eb; color: white; font-weight: bold;
         border-radius: 12px; padding: 12px; border: none; font-size: 16px;
@@ -38,13 +37,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Caricamento del Database
-@st.cache_data
-def load_data():
-    filename = 'TELEFILM2024_LIGHT.csv' if os.path.exists('TELEFILM2024_LIGHT.csv') else 'telefilm_database.csv'
-    df = pd.read_csv(filename, sep=';', encoding='utf-8-sig', low_memory=False)
+# Funzione per recuperare la locandina in automatico
+@st.cache_data(ttl=86400)
+def get_poster_url(show_name):
+    try:
+        url = f"https://api.tvmaze.com/singlesearch/shows?q={requests.utils.quote(show_name)}"
+        res = requests.get(url, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            if data and 'image' in data and data['image']:
+                return data['image'].get('medium') or data['image'].get('original')
+    except Exception:
+        pass
+    return "https://via.placeholder.com/210x295/1e293b/94a3b8?text=TV+Show"
+
+# Pulizia e Caricamento Dati
+def process_dataframe(df):
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-    
     df['TELEFILM'] = df['TELEFILM'].astype(str).str.strip()
     df['STATO'] = df['STATO'].astype(str).str.strip().str.upper().replace({'SCARICATA': 'S'})
     df['GENERE'] = df['GENERE'].astype(str).str.strip().str.upper().replace({'COMEDT': 'COMEDY', 'NAN': 'ALTRO'})
@@ -61,23 +70,43 @@ def load_data():
     return df
 
 if 'df' not in st.session_state:
-    st.session_state.df = load_data()
+    if os.path.exists('TELEFILM2024_LIGHT.csv'):
+        raw_df = pd.read_csv('TELEFILM2024_LIGHT.csv', sep=';', encoding='utf-8-sig', low_memory=False)
+        st.session_state.df = process_dataframe(raw_df)
+    else:
+        st.session_state.df = None
 
-# Tabella Punteggi Generi
-GENRE_SCORES = {
+# Punteggi Generi Personalizzabili
+DEFAULT_GENRE_SCORES = {
     'SCI-FI': 15, 'THRILLER': 14, 'DRAMA': 12, 'ACTION': 11,
     'SUPERNATURAL': 10, 'CRIME': 10, 'FANTASY': 9, 'LEGAL': 8,
     'SPY': 8, 'HORROR': 7, 'MEDICAL': 6, 'ANIMATION': 5, 'COMEDY': 5, 'ALTRO': 0
 }
 
-# Algoritmo di Punteggio Personalizzato
+if 'genre_scores' not in st.session_state:
+    st.session_state.genre_scores = DEFAULT_GENRE_SCORES.copy()
+
+# Header e Fallback File Uploader
+st.title("📺 TV Tracker Pro")
+
+if st.session_state.df is None:
+    st.warning("⚠️ File `TELEFILM2024_LIGHT.csv` non trovato sul server.")
+    uploaded_file = st.file_uploader("Carica il tuo file CSV per iniziare:", type=['csv'])
+    if uploaded_file is not None:
+        raw_df = pd.read_csv(uploaded_file, sep=';', encoding='utf-8-sig', low_memory=False)
+        st.session_state.df = process_dataframe(raw_df)
+        st.success("Database caricato con successo!")
+        st.rerun()
+    st.stop()
+
+# Calcolo Punteggio Algoritmo
 def calculate_score(series_df):
     valore = series_df['VALORE'].iloc[0]
     voto_personale = min(100, max(0, valore)) if valore > 0 else 70.0
     comp_voto = voto_personale * 0.30
     
     genere = series_df['GENERE'].iloc[0]
-    p_genere = GENRE_SCORES.get(genere, 5)
+    p_genere = st.session_state.genre_scores.get(genere, 5)
     
     ready_eps = series_df[series_df['STATO'] == 'S']
     if len(ready_eps) == 0:
@@ -104,11 +133,10 @@ def calculate_score(series_df):
     
     return round(comp_voto + p_genere + bonus_season + bonus_all + bonus_inerzia + bonus_nuova - malus_cancellata, 1)
 
-# Header
-st.title("📺 TV Tracker Pro")
-tab1, tab2, tab3, tab4 = st.tabs(["🛋️ Divano", "📥 Aggiorna N➜S", "📁 Completate", "⚙️ Backup"])
+# Tab principali
+tab1, tab2, tab3, tab4 = st.tabs(["🛋️ Divano", "📥 Aggiorna N➜S", "📁 Completate", "⚙️ Impostazioni"])
 
-# TAB 1: MODALITA DIVANO
+# TAB 1: DIVANO
 with tab1:
     df_curr = st.session_state.df
     shows_with_S = df_curr[df_curr['STATO'] == 'S']['TELEFILM'].unique()
@@ -120,38 +148,62 @@ with tab1:
         for show in shows_with_S:
             s_df = df_curr[df_curr['TELEFILM'] == show]
             score = calculate_score(s_df)
+            valore_pers = s_df['VALORE'].iloc[0]
             next_ep = s_df[s_df['STATO'] == 'S'].sort_values(by=['S', 'E']).iloc[0]
             rankings.append({
-                'show': show, 'score': score, 'season': int(next_ep['S']),
-                'episode': int(next_ep['E']), 'genere': s_df['GENERE'].iloc[0],
-                'provider': s_df['ABBONAMENTO'].iloc[0]
+                'show': show, 'score': score, 'valore': valore_pers,
+                'season': int(next_ep['S']), 'episode': int(next_ep['E']),
+                'genere': s_df['GENERE'].iloc[0], 'provider': s_df['ABBONAMENTO'].iloc[0]
             })
         
         rank_df = pd.DataFrame(rankings).sort_values(by='score', ascending=False)
         st.caption(f"Trovate {len(rank_df)} serie pronte alla visione")
         
         for idx, row in rank_df.iterrows():
-            st.markdown(f"""
-            <div class="card">
-                <span class="badge-score">⭐ {row['score']} pt</span>
-                <div class="card-title">{row['show']}</div>
-                <span class="badge-genre">{row['genere']}</span>
-                <span class="badge-provider">📺 {row['provider']}</span>
-                <div class="ep-box"><strong>Prossimo episodio:</strong> Stagione {row['season']} - Episodio {row['episode']}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            poster_url = get_poster_url(row['show'])
+            val_txt = f"{row['valore']:.0f}/100" if row['valore'] > 0 else "N/D"
             
-            if st.button(f"▶️ GUARDA S{row['season']:02d}E{row['episode']:02d} - {row['show']}", key=f"btn_v_{row['show']}"):
-                mask = (st.session_state.df['TELEFILM'] == row['show']) & \
-                       (st.session_state.df['S'] == row['season']) & \
-                       (st.session_state.df['E'] == row['episode'])
+            # Card Layout con Immagine + Info
+            col_img, col_info = st.columns([1, 2.2])
+            
+            with col_img:
+                st.image(poster_url, use_container_width=True)
                 
-                st.session_state.df.loc[mask, 'STATO'] = 'V'
-                st.session_state.df.loc[mask, 'DATA'] = datetime.now().strftime('%d/%m/%y')
-                st.session_state.df.loc[mask, 'DATA_VISIONA'] = datetime.now()
-                
-                st.success(f"Segnato S{row['season']:02d}E{row['episode']:02d} come VISTO!")
-                st.rerun()
+            with col_info:
+                st.markdown(f"""
+                <div style="margin-bottom: 6px;">
+                    <span class="badge-score">⭐ {row['score']} pt</span>
+                    <span class="badge-user-score">👤 {val_txt}</span>
+                </div>
+                <div class="card-title">{row['show']}</div>
+                <div>
+                    <span class="badge-genre">{row['genere']}</span>
+                    <span class="badge-provider">📺 {row['provider']}</span>
+                </div>
+                <div class="ep-box"><strong>Prossimo:</strong> S{row['season']:02d}E{row['episode']:02d}</div>
+                """, unsafe_allow_html=True)
+            
+            # Azioni
+            col_b1, col_b2 = st.columns([2.5, 1])
+            with col_b1:
+                if st.button(f"▶️ GUARDA S{row['season']:02d}E{row['episode']:02d}", key=f"btn_v_{row['show']}"):
+                    mask = (st.session_state.df['TELEFILM'] == row['show']) & \
+                           (st.session_state.df['S'] == row['season']) & \
+                           (st.session_state.df['E'] == row['episode'])
+                    st.session_state.df.loc[mask, 'STATO'] = 'V'
+                    st.session_state.df.loc[mask, 'DATA'] = datetime.now().strftime('%d/%m/%y')
+                    st.session_state.df.loc[mask, 'DATA_VISIONA'] = datetime.now()
+                    st.success(f"Segnato S{row['season']:02d}E{row['episode']:02d} come VISTO!")
+                    st.rerun()
+            with col_b2:
+                with st.popover("✏️ Voto"):
+                    nuovo_voto = st.number_input(f"Voto per {row['show']}", min_value=0.0, max_value=100.0, value=float(row['valore']), step=1.0, key=f"inp_val_{row['show']}")
+                    if st.button("Salva Voto", key=f"save_val_{row['show']}"):
+                        mask_show = st.session_state.df['TELEFILM'] == row['show']
+                        st.session_state.df.loc[mask_show, 'VALORE'] = nuovo_voto
+                        st.success("Voto salvato!")
+                        st.rerun()
+            st.markdown("<hr style='border:1px solid #1e293b; margin:15px 0;'>", unsafe_allow_html=True)
 
 # TAB 2: AGGIORNA N -> S
 with tab2:
@@ -168,16 +220,23 @@ with tab2:
             n_eps = s_df[s_df['STATO'] == 'N'].sort_values(by=['S', 'E'])
             if len(n_eps) > 0:
                 oldest_n = n_eps.iloc[0]
-                with st.expander(f"📌 {show} - S{int(oldest_n['S']):02d}E{int(oldest_n['E']):02d}", expanded=True):
-                    st.write(f"**Piattaforma:** {s_df['ABBONAMENTO'].iloc[0]} | **Genere:** {s_df['GENERE'].iloc[0]}")
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        if st.button(f"✅ Pronta (S)", key=f"btn_s_{show}_{oldest_n['S']}_{oldest_n['E']}"):
+                poster_url = get_poster_url(show)
+                
+                with st.expander(f"📌 {show} - Prossima: S{int(oldest_n['S']):02d}E{int(oldest_n['E']):02d}", expanded=True):
+                    col_p, col_d = st.columns([1, 2])
+                    with col_p:
+                        st.image(poster_url, use_container_width=True)
+                    with col_d:
+                        st.write(f"**Piattaforma:** {s_df['ABBONAMENTO'].iloc[0]}")
+                        st.write(f"**Genere:** {s_df['GENERE'].iloc[0]}")
+                        st.write(f"**Voto Personale:** {s_df['VALORE'].iloc[0]:.0f}/100")
+                        
+                        if st.button(f"✅ Pronta S{int(oldest_n['S']):02d}E{int(oldest_n['E']):02d}", key=f"btn_s_{show}_{oldest_n['S']}_{oldest_n['E']}"):
                             mask = (st.session_state.df['TELEFILM'] == show) & (st.session_state.df['S'] == oldest_n['S']) & (st.session_state.df['E'] == oldest_n['E'])
                             st.session_state.df.loc[mask, 'STATO'] = 'S'
                             st.rerun()
-                    with col_b:
-                        if st.button(f"⏩ Scarica Stagione {int(oldest_n['S'])}", key=f"btn_s_all_{show}_{oldest_n['S']}"):
+                            
+                        if st.button(f"⏩ Tutta la Stagione {int(oldest_n['S'])} pronta", key=f"btn_s_all_{show}_{oldest_n['S']}"):
                             mask = (st.session_state.df['TELEFILM'] == show) & (st.session_state.df['S'] == oldest_n['S']) & (st.session_state.df['STATO'] == 'N')
                             st.session_state.df.loc[mask, 'STATO'] = 'S'
                             st.rerun()
@@ -186,7 +245,7 @@ with tab2:
 with tab3:
     st.subheader("📁 Archivio Serie Completate")
     completed_shows = [
-        {'show': show, 'tot_episodes': len(group), 'genere': group['GENERE'].iloc[0], 'provider': group['ABBONAMENTO'].iloc[0]}
+        {'show': show, 'tot_episodes': len(group), 'genere': group['GENERE'].iloc[0], 'provider': group['ABBONAMENTO'].iloc[0], 'voto': group['VALORE'].iloc[0]}
         for show, group in st.session_state.df.groupby('TELEFILM') if (group['STATO'] == 'V').all()
     ]
     if len(completed_shows) > 0:
@@ -194,12 +253,28 @@ with tab3:
     else:
         st.info("Nessuna serie completata al 100%.")
 
-# TAB 4: BACKUP
+# TAB 4: IMPOSTAZIONI E BACKUP
 with tab4:
-    st.subheader("⚙️ Backup e Download Database")
+    st.subheader("⚙️ Impostazioni e Backup")
+    
+    # Personalizzazione Punteggi Generi
+    with st.expander("🎭 Personalizza Punteggi Generi (Algoritmo)", expanded=False):
+        st.caption("Modifica i punti bonus assegnati dall'algoritmo a ciascun genere:")
+        updated_scores = {}
+        for g, score in st.session_state.genre_scores.items():
+            updated_scores[g] = st.number_input(f"Punti per {g}", min_value=0, max_value=30, value=int(score), key=f"g_score_{g}")
+        if st.button("💾 Salva Punteggi Generi"):
+            st.session_state.genre_scores = updated_scores
+            st.success("Punteggi generi aggiornati!")
+            st.rerun()
+            
+    st.markdown("---")
+    
+    # Download Backup CSV
+    st.subheader("📥 Download Backup Database")
     csv_bytes = st.session_state.df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
     st.download_button(
-        label="📥 Scarica Backup CSV Aggiornato",
+        label="💾 Scarica File CSV Aggiornato",
         data=csv_bytes,
         file_name=f"TELEFILM_BACKUP_{datetime.now().strftime('%Y%m%d')}.csv",
         mime="text/csv"
