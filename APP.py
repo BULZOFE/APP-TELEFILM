@@ -28,7 +28,7 @@ st.markdown("""
     .badge-user-score { background-color: #10b981; color: #ffffff; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 13px; margin-right: 5px; }
     .badge-genre { background-color: #334155; color: #94a3b8; padding: 3px 8px; border-radius: 8px; font-size: 12px; margin-right: 6px; }
     .badge-provider { background-color: #0284c7; color: white; padding: 3px 8px; border-radius: 8px; font-size: 12px; }
-    .ep-box { background: #1e293b; border-left: 4px solid #38bdf8; padding: 10px; margin: 12px 0; border-radius: 6px; font-size: 14px; }
+    .ep-box { background: #1e293b; border-left: 4px solid #38bdf8; padding: 12px; margin: 12px 0; border-radius: 8px; font-size: 14px; }
     .stButton>button {
         width: 100%; background-color: #2563eb; color: white; font-weight: bold;
         border-radius: 12px; padding: 12px; border: none; font-size: 16px;
@@ -102,11 +102,11 @@ if st.session_state.df is None:
         st.rerun()
     st.stop()
 
-# Calcolo Punteggio Algoritmo Aggiornato
+# Calcolo Punteggio Algoritmo
 def calculate_score(series_df):
     valore = float(series_df['VALORE'].iloc[0])
     voto_personale = min(100.0, max(0.0, valore)) if valore > 0 else 70.0
-    comp_voto = voto_personale * 0.25 # max 25 pt
+    comp_voto = voto_personale * 0.20 # max 20 pt
     
     genere = series_df['GENERE'].iloc[0]
     p_genere = st.session_state.genre_scores.get(genere, 5)
@@ -115,11 +115,11 @@ def calculate_score(series_df):
     if len(ready_eps) == 0:
         return 0
     
-    # 1. BOOSTER PROGRESSO VISIONE (più puntate hai visto, più sale il punteggio)
+    # 1. BOOSTER PROGRESSO VISIONE (fino a 40 pt in base alle puntate viste)
     tot_eps = len(series_df)
     viste_eps = len(series_df[series_df['STATO'] == 'V'])
     perc_viste = viste_eps / tot_eps if tot_eps > 0 else 0
-    bonus_progresso = round(perc_viste * 25, 1) # max 25 pt
+    bonus_progresso = round(perc_viste * 40.0, 1)
     
     # 2. MALUS VETUSTÀ PUNTATA (più la puntata 'S' è vecchia, più perde punti)
     first_ready = ready_eps.sort_values(by=['S', 'E']).iloc[0]
@@ -127,9 +127,9 @@ def calculate_score(series_df):
     if pd.notnull(first_ready['DATA_VISIONA']):
         giorni_attesa = (datetime.now() - first_ready['DATA_VISIONA']).days
         if giorni_attesa > 30:
-            malus_eta = min(20, (giorni_attesa - 30) // 15 * 2) # fino a -20 pt
+            malus_eta = min(20, (giorni_attesa - 30) // 15 * 2)
             
-    # 3. BONUS NUOVA SERIE RIDOTTO (passato da 20 a soli 5 pt)
+    # 3. BONUS NUOVA SERIE RIDOTTO (5 pt max)
     is_nuova = series_df['NUOVA'].iloc[0] == 1
     has_seen_any = viste_eps > 0
     bonus_nuova = 5 if (is_nuova and not has_seen_any) else 0
@@ -137,7 +137,7 @@ def calculate_score(series_df):
     # Inerzia recente
     three_months = datetime.now() - timedelta(days=90)
     recent = series_df[(series_df['STATO'] == 'V') & (series_df['DATA_VISIONA'] >= three_months)]
-    bonus_inerzia = min(20, len(recent) * 2)
+    bonus_inerzia = min(15, len(recent) * 2)
     
     # Bonus intera stagione pronta
     curr_season = first_ready['S']
@@ -151,7 +151,7 @@ def calculate_score(series_df):
     totale = comp_voto + p_genere + bonus_progresso + bonus_inerzia + bonus_season + bonus_nuova - malus_eta - malus_cancellata
     return round(max(0.0, totale), 1)
 
-# Funzione per Renderizzare le Card
+# Funzione per Renderizzare le Card con Progresso in Evidenza
 def render_show_cards(rank_df):
     for idx, row in rank_df.iterrows():
         poster_url = get_poster_url(row['show'])
@@ -173,8 +173,10 @@ def render_show_cards(rank_df):
                 <span class="badge-provider">📺 {row['provider']}</span>
             </div>
             <div class="ep-box">
-                <strong>Prossimo:</strong> S{row['season']:02d}E{row['episode']:02d}<br>
-                <small>Progresso: {row['viste']}/{row['totali']} ep ({row['perc']:.0f}%)</small>
+                <div><strong>Prossimo:</strong> S{row['season']:02d}E{row['episode']:02d}</div>
+                <div style="font-size: 17px; font-weight: 800; color: #10b981; margin-top: 6px;">
+                    📊 Viste {row['viste']} / {row['totali']} ({row['perc']:.0f}%)
+                </div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -191,10 +193,12 @@ def render_show_cards(rank_df):
                 st.rerun()
         with col_b2:
             with st.popover("✏️ Voto"):
-                val_default = float(row['valore'])
+                st.caption("ℹ️ Voto massimo: 100")
+                val_default = min(100.0, max(0.0, float(row['valore'])))
                 nuovo_voto = st.number_input(
-                    f"Voto per {row['show']}",
+                    f"Voto per {row['show']} (0-100)",
                     min_value=0.0,
+                    max_value=100.0,
                     value=val_default,
                     step=1.0,
                     key=f"inp_val_{row['show']}"
@@ -209,7 +213,7 @@ def render_show_cards(rank_df):
 # Tab principali
 tab1, tab2, tab3, tab4 = st.tabs(["🛋️ Divano", "📥 Aggiorna N➜S", "📁 Completate", "⚙️ Impostazioni"])
 
-# TAB 1: DIVANO (CON SEPARAZIONE INIZIATE / DA INIZIARE)
+# TAB 1: DIVANO
 with tab1:
     df_curr = st.session_state.df
     shows_with_S = df_curr[df_curr['STATO'] == 'S']['TELEFILM'].unique()
@@ -236,7 +240,6 @@ with tab1:
         
         full_rank_df = pd.DataFrame(rankings).sort_values(by='score', ascending=False)
         
-        # Filtro tra Serie Iniziate (almeno 1 episodio visto) e Da Iniziare (0 episodi visti)
         df_started = full_rank_df[full_rank_df['viste'] > 0]
         df_new = full_rank_df[full_rank_df['viste'] == 0]
         
