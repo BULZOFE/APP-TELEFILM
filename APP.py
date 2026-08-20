@@ -480,7 +480,8 @@ def render_cards(filtered_df, prefix="all"):
             col_img, col_content = st.columns([1, 4])
 
             with col_img:
-                st.image(img_url, use_container_width=True)
+                # Imposta una larghezza fissa in pixel (es. 130) così la locandina rimane piccola e proporzionata
+                st.image(img_url, width=130)
 
             with col_content:
                 st.markdown(
