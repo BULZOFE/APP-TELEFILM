@@ -1,5 +1,7 @@
 import os
+from urllib.parse import quote
 import pandas as pd
+import requests
 import streamlit as st
 
 st.set_page_config(
@@ -29,6 +31,24 @@ st.markdown(
 )
 
 
+# --- FUNZIONE API TMDB ---
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_tmdb_poster(title, api_key):
+  """Recupera l'URL della locandina da TMDB per una serie TV."""
+  if not api_key or not title:
+    return None
+  try:
+    url = f"https://api.themoviedb.org/3/search/tv?api_key={api_key.strip()}&query={quote(title)}&language=it-IT"
+    response = requests.get(url, timeout=5)
+    if response.status_code == 200:
+      results = response.json().get("results", [])
+      if results and results[0].get("poster_path"):
+        return f"https://image.tmdb.org/t/p/w500{results[0]['poster_path']}"
+  except Exception:
+    pass
+  return None
+
+
 def trova_percorso_csv():
   base_dir = os.path.dirname(os.path.abspath(__file__))
   for nome in POSSIBILI_FILE:
@@ -46,7 +66,6 @@ def load_data():
     return pd.DataFrame()
 
   try:
-    # Prova prima con separatore ';' tipico del file inviato
     try:
       df_raw = pd.read_csv(
           file_path, sep=";", encoding="utf-8-sig", low_memory=False
@@ -59,7 +78,6 @@ def load_data():
     df_raw.columns = df_raw.columns.astype(str).str.strip()
     cols_upper = [c.upper() for c in df_raw.columns]
 
-    # Se il CSV contiene il registro puntate ('TELEFILM')
     if "TELEFILM" in cols_upper:
       col_map = {c: c.upper() for c in df_raw.columns}
       df_raw = df_raw.rename(columns=col_map)
@@ -74,7 +92,6 @@ def load_data():
         show_str = str(show_name).strip()
         totali = len(group)
 
-        # Contaggio episodi visti (STATO == 'V')
         viste = 0
         if "STATO" in group.columns:
           viste = len(group[group["STATO"].astype(str).str.upper() == "V"])
@@ -82,14 +99,12 @@ def load_data():
           val_max = pd.to_numeric(group["PUNT VISTE"], errors="coerce").max()
           viste = int(val_max) if pd.notna(val_max) else 0
 
-        # Stagione massima
         stagione = 1
         if "S" in group.columns:
           seasons = pd.to_numeric(group["S"], errors="coerce").dropna()
           if not seasons.empty:
             stagione = int(seasons.max())
 
-        # Genere
         genere = "N/D"
         if "GENERE" in group.columns:
           genres = group["GENERE"].dropna().unique()
@@ -109,7 +124,6 @@ def load_data():
       return pd.DataFrame(series_list)
 
     else:
-      # CSV formato riepilogativo standard
       df_raw.columns = df_raw.columns.str.lower()
       return df_raw
 
@@ -148,6 +162,47 @@ if not st.session_state.df.empty:
 
 # --- SIDEBAR ---
 with st.sidebar:
+  st.header("🔑 Configurazione TMDB")
+  tmdb_key = st.text_input(
+      "Inserisci la tua API Key TMDB:",
+      value=st.session_state.get("tmdb_key", ""),
+      type="password",
+      help="Ottieni la tua chiave gratuita su themoviedb.org",
+  )
+  st.session_state["tmdb_key"] = tmdb_key
+
+  if st.button(
+      "🖼️ Aggiorna Locandine Mancanti",
+      use_container_width=True,
+      disabled=not tmdb_key,
+  ):
+    updated_count = 0
+    progress_bar = st.progress(0)
+    total_items = len(st.session_state.df)
+
+    for idx, row in st.session_state.df.iterrows():
+      curr_loc = str(row.get("locandina", ""))
+      if (
+          curr_loc == PLACEHOLDER_POSTER
+          or curr_loc == "nan"
+          or not curr_loc.strip()
+      ):
+        poster_url = fetch_tmdb_poster(row["show"], tmdb_key)
+        if poster_url:
+          st.session_state.df.at[idx, "locandina"] = poster_url
+          updated_count += 1
+      if total_items > 0:
+        progress_bar.progress((idx + 1) / total_items)
+
+    progress_bar.empty()
+    if updated_count > 0:
+      save_data()
+      st.success(f"Trovate {updated_count} nuove locandine!")
+      st.rerun()
+    else:
+      st.info("Nessuna nuova locandina trovata o già tutte presenti.")
+
+  st.markdown("---")
   st.header("⚙️ Gestione Dati")
   if st.button("🔄 Ricarica Dati da CSV", use_container_width=True):
     if "df" in st.session_state:
@@ -194,6 +249,22 @@ def toggle_favorite(show_name):
     save_data()
 
 
+def update_single_poster(show_name):
+  key = st.session_state.get("tmdb_key", "")
+  if not key:
+    st.toast("Inserisci l'API Key TMDB nella barra laterale!", icon="⚠️")
+    return
+  poster_url = fetch_tmdb_poster(show_name, key)
+  if poster_url:
+    st.session_state.df.loc[
+        st.session_state.df["show"] == show_name, "locandina"
+    ] = poster_url
+    save_data()
+    st.toast(f"Locandina per '{show_name}' aggiornata!", icon="🖼️")
+  else:
+    st.toast(f"Nessuna locandina trovata per '{show_name}'.", icon="❌")
+
+
 # --- INTERFACCIA PRINCIPALE ---
 st.title("📺 Tracker Serie TV")
 
@@ -230,7 +301,6 @@ def render_cards(filtered_df):
     st.info("Nessuna serie trovata.")
     return
 
-  # Limite iniziale visualizzazione per fluidità interfaccia
   max_cards = 100
   total_count = len(filtered_df)
 
@@ -307,6 +377,15 @@ def render_cards(filtered_df):
                 step=1,
                 key=count_key,
             )
+
+            if st.button(
+                "🖼️ Scarica Locandina TMDB",
+                key=f"tmdb_btn_{idx}",
+                use_container_width=True,
+            ):
+              update_single_poster(show_name)
+              st.rerun()
+
             st.markdown("---")
             btn_reset, btn_save, btn_exit = st.columns(3)
 
@@ -363,15 +442,15 @@ with tab_comp:
   )
 
 with tab_fav:
-  render_cards(
-      st.session_state.df[st.session_state.df["preferito"] == True]
-  )
+  render_cards(st.session_state.df[st.session_state.df["preferito"] == True])
 
 with tab_add:
   st.subheader("➕ Aggiungi Nuova Serie")
   with st.form("add_show_form", clear_on_submit=True):
     new_title = st.text_input("Titolo della Serie TV:")
-    new_img = st.text_input("URL Locandina/Immagine (Opzionale):")
+    new_img = st.text_input(
+        "URL Locandina/Immagine (lascia vuoto per cercarla su TMDB):"
+    )
     col_f1, col_f2 = st.columns(2)
     with col_f1:
       new_season = st.number_input("Stagione:", min_value=1, value=1)
@@ -396,9 +475,16 @@ with tab_add:
 
     submitted = st.form_submit_button("Aggiungi alla lista")
     if submitted and new_title.strip() != "":
-      img_val = new_img.strip() if new_img.strip() != "" else PLACEHOLDER_POSTER
+      title_clean = new_title.strip()
+      img_val = new_img.strip()
+
+      if not img_val:
+        key = st.session_state.get("tmdb_key", "")
+        fetched_img = fetch_tmdb_poster(title_clean, key) if key else None
+        img_val = fetched_img if fetched_img else PLACEHOLDER_POSTER
+
       new_row = {
-          "show": new_title.strip(),
+          "show": title_clean,
           "stagione": int(new_season),
           "viste": int(new_viste),
           "totali": int(new_tot),
@@ -410,5 +496,5 @@ with tab_add:
           [st.session_state.df, pd.DataFrame([new_row])], ignore_index=True
       )
       save_data()
-      st.success(f"Serie '{new_title}' aggiunta con successo!")
+      st.success(f"Serie '{title_clean}' aggiunta con successo!")
       st.rerun()
