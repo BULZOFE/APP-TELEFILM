@@ -89,6 +89,27 @@ DEFAULT_GENRE_SCORES = {
 if 'genre_scores' not in st.session_state:
     st.session_state.genre_scores = DEFAULT_GENRE_SCORES.copy()
 
+# Utility Funzioni Modifica Puntate
+def reset_show_progress(show_name):
+    """Azzera le puntate viste e mette la prima puntata (S01E01) come Pronta (S)."""
+    mask = st.session_state.df['TELEFILM'] == show_name
+    st.session_state.df.loc[mask, 'STATO'] = 'N'
+    # Prima puntata 'S'
+    first_idx = st.session_state.df[mask].sort_values(by=['S', 'E']).index[0]
+    st.session_state.df.loc[first_idx, 'STATO'] = 'S'
+
+def set_show_watched_count(show_name, watched_count):
+    """Imposta esattamente quante puntate sono state viste."""
+    mask = st.session_state.df['TELEFILM'] == show_name
+    sorted_indices = st.session_state.df[mask].sort_values(by=['S', 'E']).index
+    for i, idx in enumerate(sorted_indices):
+        if i < watched_count:
+            st.session_state.df.loc[idx, 'STATO'] = 'V'
+        elif i == watched_count:
+            st.session_state.df.loc[idx, 'STATO'] = 'S'
+        else:
+            st.session_state.df.loc[idx, 'STATO'] = 'N'
+
 # Header e Fallback File Uploader
 st.title("📺 TV Tracker Pro")
 
@@ -121,7 +142,7 @@ def calculate_score(series_df):
     perc_viste = viste_eps / tot_eps if tot_eps > 0 else 0
     bonus_progresso = round(perc_viste * 40.0, 1)
     
-    # 2. MALUS VETUSTÀ PUNTATA (più la puntata 'S' è vecchia, più perde punti)
+    # 2. MALUS VETUSTÀ PUNTATA
     first_ready = ready_eps.sort_values(by=['S', 'E']).iloc[0]
     malus_eta = 0
     if pd.notnull(first_ready['DATA_VISIONA']):
@@ -151,7 +172,7 @@ def calculate_score(series_df):
     totale = comp_voto + p_genere + bonus_progresso + bonus_inerzia + bonus_season + bonus_nuova - malus_eta - malus_cancellata
     return round(max(0.0, totale), 1)
 
-# Funzione per Renderizzare le Card con Progresso in Evidenza
+# Funzione per Renderizzare le Card
 def render_show_cards(rank_df):
     for idx, row in rank_df.iterrows():
         poster_url = get_poster_url(row['show'])
@@ -180,9 +201,9 @@ def render_show_cards(rank_df):
             </div>
             """, unsafe_allow_html=True)
         
-        col_b1, col_b2 = st.columns([2.5, 1])
+        col_b1, col_b2, col_b3 = st.columns([2, 1, 1])
         with col_b1:
-            if st.button(f"▶️ GUARDA S{row['season']:02d}E{row['episode']:02d}", key=f"btn_v_{row['show']}"):
+            if st.button(f"▶️ S{row['season']:02d}E{row['episode']:02d}", key=f"btn_v_{row['show']}"):
                 mask = (st.session_state.df['TELEFILM'] == row['show']) & \
                        (st.session_state.df['S'] == row['season']) & \
                        (st.session_state.df['E'] == row['episode'])
@@ -196,11 +217,11 @@ def render_show_cards(rank_df):
                 st.caption("ℹ️ Voto massimo: 100")
                 val_default = min(100.0, max(0.0, float(row['valore'])))
                 nuovo_voto = st.number_input(
-                    f"Voto per {row['show']} (0-100)",
+                    f"Voto per {row['show']}",
                     min_value=0.0,
                     max_value=100.0,
                     value=val_default,
-                    step=1.0,
+                    step=5.0,
                     key=f"inp_val_{row['show']}"
                 )
                 if st.button("Salva Voto", key=f"save_val_{row['show']}"):
@@ -208,6 +229,31 @@ def render_show_cards(rank_df):
                     st.session_state.df.loc[mask_show, 'VALORE'] = nuovo_voto
                     st.success("Voto salvato!")
                     st.rerun()
+        with col_b3:
+            with st.popover("🛠️ Gestisci"):
+                st.markdown(f"**Gestione Puntate per {row['show']}**")
+                
+                # Reset veloce
+                if st.button("🔄 Reset (0 Viste)", key=f"reset_{row['show']}"):
+                    reset_show_progress(row['show'])
+                    st.success("Progresso azzerato!")
+                    st.rerun()
+                
+                st.markdown("---")
+                # Imposta esatto viste
+                new_count = st.number_input(
+                    "Puntate Viste Esatte:",
+                    min_value=0,
+                    max_value=int(row['totali']),
+                    value=int(row['viste']),
+                    step=1,
+                    key=f"count_{row['show']}"
+                )
+                if st.button("Salva Progresso", key=f"save_prog_{row['show']}"):
+                    set_show_watched_count(row['show'], new_count)
+                    st.success("Progresso aggiornato!")
+                    st.rerun()
+
         st.markdown("<hr style='border:1px solid #1e293b; margin:15px 0;'>", unsafe_allow_html=True)
 
 # Tab principali
@@ -305,10 +351,71 @@ with tab3:
     else:
         st.info("Nessuna serie completata al 100%.")
 
-# TAB 4: IMPOSTAZIONI E BACKUP
+# TAB 4: IMPOSTAZIONI, CORREZIONE DATI E BACKUP
 with tab4:
-    st.subheader("⚙️ Impostazioni e Backup")
+    st.subheader("⚙️ Impostazioni e Gestione")
     
+    # STRUMENTO DI CORREZIONE MANUALE SERIE
+    with st.expander("✏️ Correzione Manuale Dati Serie / Episodi", expanded=True):
+        st.caption("Seleziona una serie per modificare manualmente lo stato delle singole puntate o resettare i dati errati:")
+        
+        all_shows = sorted(st.session_state.df['TELEFILM'].unique())
+        selected_show = st.selectbox("Seleziona la Serie TV:", all_shows, index=all_shows.index("The Capture") if "The Capture" in all_shows else 0)
+        
+        if selected_show:
+            show_mask = st.session_state.df['TELEFILM'] == selected_show
+            sub_df = st.session_state.df[show_mask].sort_values(by=['S', 'E'])
+            
+            tot_e = len(sub_df)
+            v_e = len(sub_df[sub_df['STATO'] == 'V'])
+            s_e = len(sub_df[sub_df['STATO'] == 'S'])
+            n_e = len(sub_df[sub_df['STATO'] == 'N'])
+            
+            st.write(f"**Stato attuale:** Viste: `{v_e}` | Pronte (S): `{s_e}` | Da scaricare (N): `{n_e}` (Totale: `{tot_e}`)")
+            
+            c_m1, c_m2 = st.columns(2)
+            with c_m1:
+                if st.button(f"🔄 Reset '{selected_show}' a 0 Viste", key="tab4_reset"):
+                    reset_show_progress(selected_show)
+                    st.success(f"Progresso di {selected_show} azzerato!")
+                    st.rerun()
+            with c_m2:
+                new_v_count = st.number_input("Imposta quante viste:", min_value=0, max_value=tot_e, value=v_e, step=1, key="tab4_v_count")
+                if st.button("Salva Conteggio", key="tab4_save_count"):
+                    set_show_watched_count(selected_show, new_v_count)
+                    st.success("Conteggio aggiornato!")
+                    st.rerun()
+                    
+            st.markdown("**Modifica puntate singole nella tabella:**")
+            st.caption("Significato stati: `V` = Visto | `S` = Pronto/Scaricato | `N` = Non scaricato")
+            
+            # Tabella Interattiva Modificabile
+            editable_df = sub_df[['S', 'E', 'STATO', 'DATA']].copy()
+            edited_data = st.data_editor(
+                editable_df,
+                column_config={
+                    "S": st.column_config.NumberColumn("Stagione", disabled=True),
+                    "E": st.column_config.NumberColumn("Episodio", disabled=True),
+                    "STATO": st.column_config.SelectboxColumn("Stato", options=["V", "S", "N"], required=True),
+                    "DATA": st.column_config.TextColumn("Data Visione")
+                },
+                use_container_width=True,
+                hide_index=True,
+                key=f"editor_{selected_show}"
+            )
+            
+            if st.button("💾 Salva Modifiche Tabella Puntate", key="save_table_edits"):
+                for _, ed_row in edited_data.iterrows():
+                    m_ep = (st.session_state.df['TELEFILM'] == selected_show) & \
+                           (st.session_state.df['S'] == ed_row['S']) & \
+                           (st.session_state.df['E'] == ed_row['E'])
+                    st.session_state.df.loc[m_ep, 'STATO'] = ed_row['STATO']
+                    st.session_state.df.loc[m_ep, 'DATA'] = str(ed_row['DATA']) if pd.notnull(ed_row['DATA']) else ''
+                st.success("Modifiche salvate con successo nel database!")
+                st.rerun()
+
+    st.markdown("---")
+
     with st.expander("🎭 Personalizza Punteggi Generi (Algoritmo)", expanded=False):
         st.caption("Modifica i punti bonus assegnati dall'algoritmo a ciascun genere:")
         updated_scores = {}
