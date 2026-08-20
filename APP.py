@@ -6,12 +6,16 @@ st.set_page_config(
     page_title="TV Tracker Pro", page_icon="📺", layout="wide"
 )
 
-# Percorso assoluto sicuro per Streamlit Cloud
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-NOME_FILE_CSV = os.path.join(BASE_DIR, "TELEFILM_LIGHT.csv")
+# Nomi file supportati nella cartella di lavoro
+POSSIBILI_FILE = [
+    "TELEFILM2024_LIGHT.csv",
+    "TELEFILM_LIGHT.csv",
+    "telefilm_light.csv",
+    "TELEFILM.csv",
+    "telefilm.csv",
+]
 PLACEHOLDER_POSTER = "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=400&auto=format&fit=crop"
 
-# --- CSS PER FLASHCARD E BADGE ---
 st.markdown(
     """
 <style>
@@ -25,67 +29,126 @@ st.markdown(
 )
 
 
-# --- FUNZIONE DI CARICAMENTO INTELLIGENTE ---
+def trova_percorso_csv():
+  base_dir = os.path.dirname(os.path.abspath(__file__))
+  for nome in POSSIBILI_FILE:
+    path_assoluto = os.path.join(base_dir, nome)
+    if os.path.exists(path_assoluto):
+      return path_assoluto
+    if os.path.exists(nome):
+      return nome
+  return None
+
+
 def load_data():
-  if os.path.exists(NOME_FILE_CSV):
+  file_path = trova_percorso_csv()
+  if not file_path:
+    return pd.DataFrame()
+
+  try:
+    # Prova prima con separatore ';' tipico del file inviato
     try:
-      # sep=None rileva automaticamente se il file usa ',' o ';'
-      df = pd.read_csv(NOME_FILE_CSV, sep=None, engine="python")
+      df_raw = pd.read_csv(
+          file_path, sep=";", encoding="utf-8-sig", low_memory=False
+      )
+    except Exception:
+      df_raw = pd.read_csv(
+          file_path, sep=None, engine="python", encoding="utf-8-sig"
+      )
 
-      # Pulizia e normalizzazione colonne (tutto in minuscolo e senza spazi)
-      df.columns = df.columns.str.strip().str.lower()
+    df_raw.columns = df_raw.columns.astype(str).str.strip()
+    cols_upper = [c.upper() for c in df_raw.columns]
 
-      # Mappatura automatica dei nomi di colonna più comuni
-      rename_map = {
-          "titolo": "show",
-          "name": "show",
-          "serie": "show",
-          "locandina_path": "locandina",
-          "poster": "locandina",
-          "immagine": "locandina",
-          "copertina": "locandina",
-      }
-      df = df.rename(columns=rename_map)
+    # Se il CSV contiene il registro puntate ('TELEFILM')
+    if "TELEFILM" in cols_upper:
+      col_map = {c: c.upper() for c in df_raw.columns}
+      df_raw = df_raw.rename(columns=col_map)
 
-      if not df.empty:
-        return df
-    except Exception as e:
-      st.error(f"Errore nella lettura del file CSV: {e}")
+      df_valid = df_raw[
+          df_raw["TELEFILM"].notna()
+          & (df_raw["TELEFILM"].astype(str).str.strip() != "")
+      ].copy()
 
-  return pd.DataFrame()
+      series_list = []
+      for show_name, group in df_valid.groupby("TELEFILM", sort=False):
+        show_str = str(show_name).strip()
+        totali = len(group)
+
+        # Contaggio episodi visti (STATO == 'V')
+        viste = 0
+        if "STATO" in group.columns:
+          viste = len(group[group["STATO"].astype(str).str.upper() == "V"])
+        elif "PUNT VISTE" in group.columns:
+          val_max = pd.to_numeric(group["PUNT VISTE"], errors="coerce").max()
+          viste = int(val_max) if pd.notna(val_max) else 0
+
+        # Stagione massima
+        stagione = 1
+        if "S" in group.columns:
+          seasons = pd.to_numeric(group["S"], errors="coerce").dropna()
+          if not seasons.empty:
+            stagione = int(seasons.max())
+
+        # Genere
+        genere = "N/D"
+        if "GENERE" in group.columns:
+          genres = group["GENERE"].dropna().unique()
+          if len(genres) > 0 and str(genres[0]).strip() not in ["", "nan"]:
+            genere = str(genres[0]).strip()
+
+        series_list.append({
+            "show": show_str,
+            "stagione": stagione,
+            "viste": viste,
+            "totali": totali,
+            "genere": genere,
+            "preferito": False,
+            "locandina": PLACEHOLDER_POSTER,
+        })
+
+      return pd.DataFrame(series_list)
+
+    else:
+      # CSV formato riepilogativo standard
+      df_raw.columns = df_raw.columns.str.lower()
+      return df_raw
+
+  except Exception as e:
+    st.error(f"Errore nella lettura del file: {e}")
+    return pd.DataFrame()
 
 
 def save_data():
+  path_salvataggio = trova_percorso_csv() or os.path.join(
+      os.path.dirname(os.path.abspath(__file__)), "TELEFILM2024_LIGHT.csv"
+  )
   if "df" in st.session_state and not st.session_state.df.empty:
-    st.session_state.df.to_csv(NOME_FILE_CSV, index=False)
+    st.session_state.df.to_csv(path_salvataggio, index=False)
 
 
-# Caricamento in Session State
+# Inizializzazione Session State
 if "df" not in st.session_state or st.session_state.df.empty:
   st.session_state.df = load_data()
 
-# Normalizzazione e garanzia presenza colonne minime
-df_state = st.session_state.df
+# Normalizzazione colonne
+if not st.session_state.df.empty:
+  req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
+  for col in req_cols:
+    if col not in st.session_state.df.columns:
+      if col == "preferito":
+        st.session_state.df[col] = False
+      elif col in ["viste", "totali", "stagione"]:
+        st.session_state.df[col] = 0
+      else:
+        st.session_state.df[col] = "N/D"
 
-req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
-for col in req_cols:
-  if col not in df_state.columns:
-    if col == "preferito":
-      df_state[col] = False
-    elif col in ["viste", "totali", "stagione"]:
-      df_state[col] = 0
-    else:
-      df_state[col] = "N/D"
-
-if "locandina" not in df_state.columns:
-  df_state["locandina"] = PLACEHOLDER_POSTER
+  if "locandina" not in st.session_state.df.columns:
+    st.session_state.df["locandina"] = PLACEHOLDER_POSTER
 
 
-# --- SIDEBAR (CON RESET MEMORIA E BACKUP) ---
+# --- SIDEBAR ---
 with st.sidebar:
   st.header("⚙️ Gestione Dati")
-
-  # Pulsante per forzare il ricaricamento da disco
   if st.button("🔄 Ricarica Dati da CSV", use_container_width=True):
     if "df" in st.session_state:
       del st.session_state["df"]
@@ -96,9 +159,9 @@ with st.sidebar:
   if not st.session_state.df.empty:
     csv_bytes = st.session_state.df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "📥 Scarica CSV sul PC",
+        "📥 Scarica CSV Sintesi",
         data=csv_bytes,
-        file_name="TELEFILM_LIGHT.csv",
+        file_name="TELEFILM_SUMMARY.csv",
         mime="text/csv",
         use_container_width=True,
     )
@@ -146,6 +209,8 @@ if not df.empty:
   col_m4.metric("Episodi Visti", int(df["viste"].sum()))
   st.divider()
 
+search_query = st.text_input("🔍 Cerca serie per titolo...", "").strip().lower()
+
 tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
     "📋 Tutte le Serie",
     "🍿 In Corso",
@@ -156,11 +221,23 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 
 
 def render_cards(filtered_df):
+  if search_query:
+    filtered_df = filtered_df[
+        filtered_df["show"].astype(str).str.lower().str.contains(search_query)
+    ]
+
   if filtered_df.empty:
-    st.info("Nessuna serie trovata in questa sezione.")
+    st.info("Nessuna serie trovata.")
     return
 
-  for idx, row in filtered_df.iterrows():
+  # Limite iniziale visualizzazione per fluidità interfaccia
+  max_cards = 100
+  total_count = len(filtered_df)
+
+  if total_count > max_cards:
+    st.caption(f"Mostrando le prime {max_cards} serie su {total_count}.")
+
+  for idx, row in filtered_df.head(max_cards).iterrows():
     show_name = row["show"]
     viste = int(row["viste"])
     totali = int(row["totali"])
@@ -173,12 +250,10 @@ def render_cards(filtered_df):
         if pd.notna(row.get("locandina"))
         else PLACEHOLDER_POSTER
     )
-    if not str(img_url).strip():
-      img_url = PLACEHOLDER_POSTER
 
     pct = int((viste / totali) * 100) if totali > 0 else 0
 
-    if viste == totali:
+    if viste == totali and totali > 0:
       badge = '<span class="badge-completed">COMPLETATO</span>'
     elif viste > 0:
       badge = '<span class="badge-in-progress">IN CORSO</span>'
@@ -222,14 +297,13 @@ def render_cards(filtered_df):
           count_key = f"input_viste_{idx}"
           with st.popover("🛠️ Gestisci", use_container_width=True):
             st.markdown(f"#### ⚙️ Modifica: {show_name}")
-
             if count_key not in st.session_state:
               st.session_state[count_key] = viste
 
             st.number_input(
                 "Puntate viste esatte:",
                 min_value=0,
-                max_value=totali,
+                max_value=max(totali, 1),
                 step=1,
                 key=count_key,
             )
@@ -294,7 +368,7 @@ with tab_fav:
   )
 
 with tab_add:
-  st.subheader("➕ Aggiungi Nuova Serie al CSV")
+  st.subheader("➕ Aggiungi Nuova Serie")
   with st.form("add_show_form", clear_on_submit=True):
     new_title = st.text_input("Titolo della Serie TV:")
     new_img = st.text_input("URL Locandina/Immagine (Opzionale):")
@@ -311,6 +385,7 @@ with tab_add:
               "Documentario",
               "Thriller",
               "Azione",
+              "Crime",
           ],
       )
     with col_f2:
