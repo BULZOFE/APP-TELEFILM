@@ -1,110 +1,40 @@
-import os
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(
     page_title="TV Tracker Pro", page_icon="📺", layout="wide"
 )
 
-# ⚠️ INSERISCI IL NOME ESATTO DEL TUO FILE CSV
-NOME_FILE_CSV = "TELEFILM_LIGHT.csv"
-
-# LOCANDINA DI DEFAULT
 PLACEHOLDER_POSTER = "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=400&auto=format&fit=crop"
 
-# --- CSS PERSONALIZZATO (FLASH CARD & BADGE) ---
-st.markdown(
-    """
-<style>
-    .main {
-        background-color: #0f172a;
-        color: #f8fafc;
-    }
-    
-    .show-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    }
-
-    .badge-completed {
-        background-color: #059669;
-        color: white;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    .badge-in-progress {
-        background-color: #0284c7;
-        color: white;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    .badge-not-started {
-        background-color: #475569;
-        color: white;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-</style>
-""",
-    unsafe_allow_html=True,
-)
+# --- CONNESSIONE GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 
-# --- CARICAMENTO CON BLOCCO DI SICUREZZA ---
 def load_data():
-  if os.path.exists(NOME_FILE_CSV):
-    try:
-      df = pd.read_csv(NOME_FILE_CSV)
-      if not df.empty:
-        return df
-    except Exception as e:
-      st.error(f"Errore lettura CSV: {e}")
-
-  # Se il file è vuoto o non esiste, evita di sovrascrivere subito
-  return pd.DataFrame(
-      columns=["show", "stagione", "viste", "totali", "genere", "preferito"]
-  )
+  try:
+    # Read con ttl=0 per ottenere sempre i dati più aggiornati in tempo reale
+    df = conn.read(ttl=0)
+    return df
+  except Exception as e:
+    st.error(f"Errore nella connessione a Google Sheets: {e}")
+    return pd.DataFrame()
 
 
-# --- SALVATAGGIO SICURO ---
 def save_data():
-  if "df" in st.session_state and not st.session_state.df.empty:
+  if "df" in st.session_state:
     save_df = st.session_state.df.copy()
     if "locandina_path" in save_df.columns:
       save_df = save_df.drop(columns=["locandina_path"])
-    save_df.to_csv(NOME_FILE_CSV, index=False)
+    conn.update(data=save_df)
 
-# --- SIDEBAR CON TASTO DI BACKUP MANUAL ---
-with st.sidebar:
-  st.header("💾 Backup Dati")
-  if "df" in st.session_state and not st.session_state.df.empty:
-    csv_bytes = st.session_state.df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Scarica Backup CSV sul PC",
-        data=csv_bytes,
-        file_name="backup_TELEFILM_LIGHT.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-      
+
 # Caricamento iniziale
 if "df" not in st.session_state:
   st.session_state.df = load_data()
 
-# --- RECOVERY AUTOMATICO COLONNE (Previene KeyError) ---
+# Controllo e ripristino sicuro colonne
 req_cols = ["show", "stagione", "viste", "totali", "genere", "preferito"]
 for col in req_cols:
   if col not in st.session_state.df.columns:
@@ -129,7 +59,7 @@ if "locandina_path" not in st.session_state.df.columns:
     st.session_state.df["locandina_path"] = PLACEHOLDER_POSTER
 
 
-# --- AGGIORNAMENTI STATO ---
+# --- AGGIORNAMENTI ---
 def set_show_watched_count(show_name, count):
   st.session_state.df.loc[
       st.session_state.df["show"] == show_name, "viste"
@@ -157,7 +87,7 @@ def toggle_favorite(show_name):
 
 
 # --- INTERFACCIA UTENTE ---
-st.title("📺 Tracker Serie TV")
+st.title("📺 Tracker Serie TV (Google Sheets)")
 
 df = st.session_state.df
 
@@ -180,7 +110,6 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 ])
 
 
-# RENDERING CARD CON RECUPERO SICURO DELLE IMMAGINI
 def render_cards(filtered_df):
   if filtered_df.empty:
     st.info("Nessuna serie da mostrare in questa categoria.")
@@ -194,20 +123,11 @@ def render_cards(filtered_df):
     genere = row["genere"]
     is_fav = bool(row["preferito"])
 
-    # Estrazione sicura dell'immagine senza crash
     img_url = row.get("locandina_path", PLACEHOLDER_POSTER)
     if pd.isna(img_url) or not str(img_url).strip():
       img_url = PLACEHOLDER_POSTER
 
     pct = int((viste / totali) * 100) if totali > 0 else 0
-
-    if viste == totali:
-      badge_html = '<span class="badge-completed">COMPLETATO</span>'
-    elif viste > 0:
-      badge_html = '<span class="badge-in-progress">IN CORSO</span>'
-    else:
-      badge_html = '<span class="badge-not-started">DA INIZIARE</span>'
-
     fav_icon = "⭐" if is_fav else "☆"
 
     with st.container():
@@ -217,9 +137,7 @@ def render_cards(filtered_df):
         st.image(img_url, use_container_width=True)
 
       with col_content:
-        st.markdown(
-            f"### {show_name} {badge_html}", unsafe_allow_html=True
-        )
+        st.markdown(f"### {show_name}")
         st.caption(f"Stagione {stagione} • Genere: {genere}")
         st.progress(pct / 100)
 
@@ -245,7 +163,6 @@ def render_cards(filtered_df):
 
         with c_popover:
           count_key = f"input_viste_{idx}"
-
           with st.popover("🛠️ Gestisci", use_container_width=True):
             st.markdown(f"#### ⚙️ Modifica: {show_name}")
 
@@ -259,19 +176,16 @@ def render_cards(filtered_df):
                 step=1,
                 key=count_key,
             )
-
             st.markdown("---")
             btn_reset, btn_save, btn_exit = st.columns(3)
 
             with btn_reset:
-              # Azzera SENZA salvare e SENZA chiudere il pop-up
               if st.button(
                   "🔄 Reset", key=f"reset_{idx}", use_container_width=True
               ):
                 st.session_state[count_key] = 0
 
             with btn_save:
-              # Salva sul CSV e CHIUDE il pop-up
               if st.button(
                   "💾 Salva",
                   key=f"save_{idx}",
@@ -279,11 +193,10 @@ def render_cards(filtered_df):
                   use_container_width=True,
               ):
                 set_show_watched_count(show_name, st.session_state[count_key])
-                st.toast(f"Progresso salvato per '{show_name}'!")
+                st.toast(f"Progresso salvato su Google Sheets per '{show_name}'!")
                 st.rerun()
 
             with btn_exit:
-              # Annulla e CHIUDE il pop-up
               if st.button(
                   "❌ Esci", key=f"exit_{idx}", use_container_width=True
               ):
@@ -300,7 +213,6 @@ def render_cards(filtered_df):
       st.markdown("---")
 
 
-# TABS PRINCIPALI
 with tab_all:
   render_cards(st.session_state.df)
 
@@ -322,7 +234,7 @@ with tab_fav:
   render_cards(df_fav)
 
 with tab_add:
-  st.subheader("➕ Aggiungi Nuova Serie al CSV")
+  st.subheader("➕ Aggiungi Nuova Serie a Google Sheets")
   with st.form("add_show_form", clear_on_submit=True):
     new_title = st.text_input("Titolo della Serie TV:")
     new_img = st.text_input("URL Locandina/Immagine (Opzionale):")
@@ -347,7 +259,7 @@ with tab_add:
           "Puntate già Viste:", min_value=0, max_value=new_tot, value=0
       )
 
-    submitted = st.form_submit_button("Aggiungi e Scrivi su CSV")
+    submitted = st.form_submit_button("Aggiungi e Scrivi su Google Sheets")
     if submitted:
       if new_title.strip() != "":
         img_val = new_img.strip() if new_img.strip() != "" else PLACEHOLDER_POSTER
@@ -364,5 +276,5 @@ with tab_add:
             [st.session_state.df, pd.DataFrame([new_row])], ignore_index=True
         )
         save_data()
-        st.success(f"Serie '{new_title}' aggiunta al file CSV!")
+        st.success(f"Serie '{new_title}' salvata su Google Sheets!")
         st.rerun()
