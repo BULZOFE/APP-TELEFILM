@@ -282,19 +282,16 @@ with st.sidebar:
         "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso. (Ordinati per voto decrescente)"
     )
 
-    # Raccoglie i generi presenti
     generi_presenti = [
         g
         for g in st.session_state.df["genere"].dropna().unique()
         if str(g).strip() not in ["", "N/D"]
     ]
 
-    # Inizializza i voti mancanti nel session state
     for gen in generi_presenti:
         if gen not in st.session_state.voti_generi:
             st.session_state.voti_generi[gen] = 50.0
 
-    # Ordina i generi in base al voto (dal più alto al più basso) e a parità di voto in ordine alfabetico
     generi_list = sorted(
         generi_presenti,
         key=lambda g: (-st.session_state.voti_generi.get(g, 50.0), g),
