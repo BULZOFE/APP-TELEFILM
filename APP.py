@@ -197,7 +197,16 @@ with tab1:
                     st.rerun()
             with col_b2:
                 with st.popover("✏️ Voto"):
-                    nuovo_voto = st.number_input(f"Voto per {row['show']}", min_value=0.0, max_value=100.0, value=float(row['valore']), step=1.0, key=f"inp_val_{row['show']}")
+                    # Normalizzazione valore per evitare crash Streamlit
+                    val_default = min(100.0, max(0.0, float(row['valore'])))
+                    nuovo_voto = st.number_input(
+                        f"Voto per {row['show']}",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=val_default,
+                        step=1.0,
+                        key=f"inp_val_{row['show']}"
+                    )
                     if st.button("Salva Voto", key=f"save_val_{row['show']}"):
                         mask_show = st.session_state.df['TELEFILM'] == row['show']
                         st.session_state.df.loc[mask_show, 'VALORE'] = nuovo_voto
