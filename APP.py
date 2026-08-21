@@ -20,11 +20,37 @@ st.markdown(
     """
 <style>
     .main { background-color: #0f172a; color: #f8fafc; }
-    .badge-completed { background-color: #059669; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
-    .badge-in-progress { background-color: #0284c7; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
-    .badge-not-started { background-color: #475569; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
-    .badge-voto { padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block; margin-left: 5px; }
     
+    /* Contenitore card ristretto e centrato anche su PC */
+    .card-container {
+        max-width: 420px;
+        margin: 0 auto 25px auto;
+        padding: 15px;
+        background-color: #1e293b;
+        border-radius: 14px;
+        border: 1px solid #334155;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Titolo serie in viola, grande e in evidenza */
+    .serie-title {
+        color: #c084fc;
+        font-size: 1.4rem;
+        font-weight: 800;
+        text-align: center;
+        margin-top: 10px;
+        margin-bottom: 8px;
+        line-height: 1.2;
+    }
+
+    /* Badge di stato più grandi e visibili */
+    .badge-completed { background-color: #059669; color: white; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
+    .badge-in-progress { background-color: #0284c7; color: white; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
+    .badge-not-started { background-color: #475569; color: white; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
+    
+    /* Badge Voto più grande e in evidenza */
+    .badge-voto { padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 800; display: inline-block; }
+
     /* Stile locandina verticale centrata */
     [data-testid="stImage"] img {
         border-radius: 10px;
@@ -71,7 +97,6 @@ def fetch_tmdb_poster(title, api_key):
         if response.status_code == 200:
             results = response.json().get("results", [])
             if results and results[0].get("poster_path"):
-                # Modificato da w500 a w342 per ottimizzare peso e velocità
                 return f"https://image.tmdb.org/t/p/w342{results[0]['poster_path']}"
     except Exception:
         pass
@@ -219,7 +244,6 @@ if not st.session_state.df.empty:
     if "locandina" not in st.session_state.df.columns:
         st.session_state.df["locandina"] = PLACEHOLDER_POSTER
 
-    # Inizializza i voti predefiniti per i generi esistenti
     generi_presenti = (
         set(st.session_state.df["genere"].dropna().unique()) - {"", "N/D"}
     )
@@ -242,13 +266,19 @@ def recalculate_all_votes():
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("📊 Statistiche")
-    
-    # Calcoliamo i valori dai dati attuali
+
     df_sidebar = st.session_state.get("df", pd.DataFrame())
     if not df_sidebar.empty:
         tot_serie = len(df_sidebar)
-        in_corso = len(df_sidebar[(df_sidebar["viste"] > 0) & (df_sidebar["viste"] < df_sidebar["totali"])])
-        completate = len(df_sidebar[df_sidebar["viste"] == df_sidebar["totali"]])
+        in_corso = len(
+            df_sidebar[
+                (df_sidebar["viste"] > 0)
+                & (df_sidebar["viste"] < df_sidebar["totali"])
+            ]
+        )
+        completate = len(
+            df_sidebar[df_sidebar["viste"] == df_sidebar["totali"]]
+        )
         ep_visti = int(df_sidebar["viste"].sum())
     else:
         tot_serie, in_corso, completate, ep_visti = 0, 0, 0, 0
@@ -256,13 +286,13 @@ with st.sidebar:
     col_s1, col_s2 = st.columns(2)
     col_s1.metric("Totali", tot_serie)
     col_s2.metric("In Corso", in_corso)
-    
+
     col_s3, col_s4 = st.columns(2)
     col_s3.metric("Completate", completate)
     col_s4.metric("Ep. Visti", ep_visti)
 
     st.markdown("---")
-    
+
     st.header("🔑 Configurazione TMDB")
     tmdb_key = st.text_input(
         "Inserisci la tua API Key TMDB:",
@@ -303,12 +333,10 @@ with st.sidebar:
                 )
 
     st.markdown("---")
-    
-    # Inizializza lo stato dell'expander se non esiste
+
     if "mostra_gestione_generi" not in st.session_state:
         st.session_state.mostra_gestione_generi = False
 
-    # Usiamo un expander nella sidebar che funge da menu a scomparsa
     with st.expander("🎭 Gestione Voti Generi", expanded=False):
         st.caption(
             "Modificando il voto di un genere, verranno ricalcolati i voti di tutte le serie appartenenti ad esso. (Ordinati per voto decrescente)"
@@ -333,7 +361,9 @@ with st.sidebar:
             current_gen_voto = int(st.session_state.voti_generi[gen])
             options_gen = list(range(0, 101, 5))
             if current_gen_voto not in options_gen:
-                options_gen = sorted(list(set(options_gen + [current_gen_voto])))
+                options_gen = sorted(
+                    list(set(options_gen + [current_gen_voto]))
+                )
 
             new_val = st.selectbox(
                 f"Voto Genere: {gen} ({current_gen_voto})",
@@ -430,9 +460,7 @@ def delete_show(show_name):
 
 # --- INTERFACCIA PRINCIPALE ---
 st.title("📺 Tracker Serie TV")
-
-df = st.session_state.df
-    
+st.divider()
 
 col_search, col_filter_genre = st.columns([3, 1])
 with col_search:
@@ -440,6 +468,7 @@ with col_search:
 
 with col_filter_genre:
     generi_disponibili = ["Tutti"]
+    df = st.session_state.df
     if not df.empty and "genere" in df.columns:
         generi_disponibili += sorted([
             g
@@ -506,32 +535,41 @@ def render_cards(filtered_df, prefix="all"):
         voto_badge = get_voto_badge_html(voto)
         fav_icon = "⭐" if is_fav else "☆"
 
+        # Apertura contenitore card ristretto e centrato
         with st.container():
-            # LAYOUT VERTICALE PER MOBILE (TUTTO IN COLONNA)
-            
-            # 1. Locandina in alto (più grande e centrata)
-            st.image(img_url, width=160)
-            
-            # 2. Titolo e Badge centrati o ben allineati
+            st.markdown('<div class="card-container">', unsafe_allow_html=True)
+
+            st.image(img_url, width=150)
+
             st.markdown(
-                f"<h4 style='text-align: center; margin-bottom: 0px;'>{show_name}</h4>",
+                f'<div class="serie-title">{show_name}</div>',
                 unsafe_allow_html=True,
             )
-            
-            # Riga di contorno: Badge stato e Voto
+
             col_badges1, col_badges2 = st.columns(2)
             with col_badges1:
-                st.markdown(f"<div style='text-align: center;'>{badge}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='text-align: center;'>{badge}</div>",
+                    unsafe_allow_html=True,
+                )
             with col_badges2:
-                st.markdown(f"<div style='text-align: center;'>{voto_badge}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='text-align: center;'>{voto_badge}</div>",
+                    unsafe_allow_html=True,
+                )
 
-            st.caption(f"<div style='text-align: center;'>Stagione {stagione} • Genere: {genere}</div>", unsafe_allow_html=True)
-            
-            # 3. Barra di avanzamento
+            st.markdown(
+                f"<div style='text-align: center; color: #94a3b8; font-size: 0.9rem; margin-top: 6px;'>Stagione {stagione} • Genere: {genere}</div>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
             st.progress(pct / 100)
-            st.markdown(f"<p style='text-align: center; font-size: 0.85rem; margin-top: -5px;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>", unsafe_allow_html=True)
+            st.markdown(
+                f"<p style='text-align: center; font-size: 0.9rem; margin-top: -2px; color: #cbd5e1;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>",
+                unsafe_allow_html=True,
+            )
 
-            # 4. Pulsanti di azione disposti comodamente per il tap da cellulare
             c_plus1, c_popover, c_fav = st.columns([2, 2, 1])
 
             with c_plus1:
@@ -556,7 +594,7 @@ def render_cards(filtered_df, prefix="all"):
                 voto_key = f"input_voto_{prefix}_{idx}"
                 with st.popover("🛠️ Modifica", use_container_width=True):
                     st.markdown(f"#### ⚙️ Modifica: {show_name}")
-                    
+
                     st.session_state[count_key] = viste
 
                     st.number_input(
@@ -637,7 +675,8 @@ def render_cards(filtered_df, prefix="all"):
                     toggle_favorite(show_name)
                     st.rerun()
 
-            st.markdown("---")
+            # Chiusura contenitore card
+            st.markdown("</div>", unsafe_allow_html=True)
 
 
 # --- CONTENUTO TAB ---
@@ -694,7 +733,7 @@ with tab_add:
         new_voto_select = st.selectbox(
             "Seleziona Voto per questa Serie (o Voto per il nuovo Genere):",
             options=voto_options_add,
-            index=10,  # Default 50
+            index=10,
             help="Se il genere specificato è nuovo, questo voto verrà assegnato anche al genere.",
         )
 
