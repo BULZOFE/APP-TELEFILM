@@ -109,6 +109,32 @@ def fetch_tmdb_poster(title, api_key):
         pass
     return None
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_tmdb_episode_details(title, season_num, episode_num, api_key):
+    """Recupera titolo e trama della puntata specifica da TMDB."""
+    if not api_key or not title:
+        return None, None
+    try:
+        # 1. Prima cerchiamo l'ID della serie TV
+        search_url = f"https://api.themoviedb.org/3/search/tv?api_key={api_key.strip()}&query={quote(title)}&language=it-IT"
+        resp = requests.get(search_url, timeout=5)
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if results:
+                show_id = results[0]["id"]
+                
+                # 2. Poi richiediamo i dettagli dell'episodio specifico (Stagione / Episodio)
+                ep_url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_num}/episode/{episode_num}?api_key={api_key.strip()}&language=it-IT"
+                ep_resp = requests.get(ep_url, timeout=5)
+                if ep_resp.status_code == 200:
+                    ep_data = ep_resp.json()
+                    ep_name = ep_data.get("name", "")
+                    ep_overview = ep_data.get("overview", "")
+                    return ep_name, ep_overview
+    except Exception:
+        pass
+    return None, None
+    
 
 def trova_percorso_csv():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -509,7 +535,7 @@ def render_cards(filtered_df, prefix="all"):
         st.info("Nessuna serie trovata.")
         return
 
-    max_cards = 100
+    max_cards = 150
     total_count = len(filtered_df)
 
     if total_count > max_cards:
@@ -530,6 +556,56 @@ def render_cards(filtered_df, prefix="all"):
             else PLACEHOLDER_POSTER
         )
 
+        # Calcoliamo quale episodio è il prossimo da vedere
+        prossimo_ep = viste + 1
+        trama_testo = "Trama non disponibile."
+        titolo_ep = ""
+
+        # Se abbiamo una chiave TMDB e la serie non è completata
+        if viste < totali:
+            tmdb_key_val = st.session_state.get("tmdb_key", "")
+            if tmdb_key_val:
+                ep_name, ep_overview = fetch_tmdb_episode_details(show_name, stagione, prossimo_ep, tmdb_key_val)
+                if ep_name:
+                    titolo_ep = ep_name
+                if ep_overview:
+                    trama_testo = ep_overview
+                else:
+                    trama_testo = "Nessuna descrizione disponibile per questo episodio."
+
+        with st.container():
+            # Layout a due colonne: Sinistra Locandina, Destra Info Puntata e Trama
+            c_img, c_info = st.columns([1, 2])
+            
+            with c_img:
+                st.image(img_url, width=140)
+                
+            with c_info:
+                # Titolo serie in viola (come richiesto in precedenza)
+                st.markdown(f"<div class='serie-title'>{show_name}</div>", unsafe_allow_html=True)
+                
+                # Badge di stato e Voto
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    st.markdown(badge, unsafe_allow_html=True)
+                with col_b2:
+                    st.markdown(voto_badge, unsafe_allow_html=True)
+                
+                st.caption(f"Stagione {stagione} • Genere: {genere}")
+                
+                # Indicazione della puntata da vedere e trama
+                if viste < totali:
+                    st.markdown(f"**Prossimo episodio:** Ep. {prossimo_ep}" + (f" - *{titolo_ep}*" if titolo_ep else ""))
+                    st.markdown(f"<p style='font-size: 0.8rem; color: #94a3b8; font-style: italic; margin-top: 5px;'>{trama_testo}</p>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<p style='color: #10b981; font-weight: bold;'>Serie Completata! 🎉</p>", unsafe_allow_html=True)
+
+            # Barra di avanzamento sotto
+            st.progress(pct / 100)
+            st.markdown(f"<p style='text-align: center; font-size: 0.85rem; margin-top: -5px;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>", unsafe_allow_html=True)
+            
+            # (Restanti pulsanti di azione: +1 Ep, Modifica, Preferito...)
+        
         pct = int((viste / totali) * 100) if totali > 0 else 0
 
         if viste == totali and totali > 0:
