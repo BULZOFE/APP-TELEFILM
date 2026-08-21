@@ -236,6 +236,20 @@ def load_data():
         st.error(f"Errore nella lettura del file: {e}")
         return pd.DataFrame()
 
+def reset_page():
+    st.session_state.current_page = 0
+
+# Nella tua sidebar:
+selected_genre = st.sidebar.selectbox(
+    "Filtra per genere", 
+    ["Tutti"] + generi, 
+    on_change=reset_page  # <--- RESETTA LA PAGINA
+)
+
+search_query = st.sidebar.text_input(
+    "Cerca...", 
+    on_change=reset_page  # <--- RESETTA LA PAGINA
+)
 
 def save_data():
     path_salvataggio = trova_percorso_csv() or os.path.join(
@@ -532,7 +546,19 @@ def render_cards(filtered_df, prefix="all"):
         st.info("Nessuna serie trovata.")
         return
 
-    max_cards = 150
+    # 2. Logica di Paginazione
+    cards_per_page = 20
+    total_pages = (len(filtered_df) - 1) // cards_per_page + 1
+    
+    # Assicura che la pagina corrente sia valida se i dati cambiano
+    if st.session_state.current_page >= total_pages:
+        st.session_state.current_page = 0
+
+    # Calcolo indici
+    start_idx = st.session_state.current_page * cards_per_page
+    end_idx = start_idx + cards_per_page
+    page_df = filtered_df.iloc[start_idx:end_idx]
+    
     for idx, row in filtered_df.head(max_cards).iterrows():
         show_name = row["show"]
         viste = int(row["viste"])
@@ -738,7 +764,25 @@ def render_cards(filtered_df, prefix="all"):
 
             # Chiusura contenitore card
             st.markdown("</div>", unsafe_allow_html=True)
-
+            
+    # 4. Bottoni di Navigazione
+    st.markdown("---") # Divisore estetico
+    col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
+    
+    with col_nav1:
+        if st.session_state.current_page > 0:
+            if st.button("⬅️ Precedente"):
+                st.session_state.current_page -= 1
+                st.rerun()
+                
+    with col_nav2:
+        st.markdown(f"<div style='text-align: center;'>Pagina {st.session_state.current_page + 1} di {total_pages}</div>", unsafe_allow_html=True)
+        
+    with col_nav3:
+        if st.session_state.current_page < total_pages - 1:
+            if st.button("Successiva ➡️"):
+                st.session_state.current_page += 1
+                st.rerun()
 
 # --- CONTENUTO TAB ---
 with tab_all:
