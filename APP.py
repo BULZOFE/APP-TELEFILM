@@ -241,6 +241,28 @@ def recalculate_all_votes():
 
 # --- SIDEBAR ---
 with st.sidebar:
+    st.header("📊 Statistiche")
+    
+    # Calcoliamo i valori dai dati attuali
+    df_sidebar = st.session_state.get("df", pd.DataFrame())
+    if not df_sidebar.empty:
+        tot_serie = len(df_sidebar)
+        in_corso = len(df_sidebar[(df_sidebar["viste"] > 0) & (df_sidebar["viste"] < df_sidebar["totali"])])
+        completate = len(df_sidebar[df_sidebar["viste"] == df_sidebar["totali"]])
+        ep_visti = int(df_sidebar["viste"].sum())
+    else:
+        tot_serie, in_corso, completate, ep_visti = 0, 0, 0, 0
+
+    col_s1, col_s2 = st.columns(2)
+    col_s1.metric("Totali", tot_serie)
+    col_s2.metric("In Corso", in_corso)
+    
+    col_s3, col_s4 = st.columns(2)
+    col_s3.metric("Completate", completate)
+    col_s4.metric("Ep. Visti", ep_visti)
+
+    st.markdown("---")
+    
     st.header("🔑 Configurazione TMDB")
     tmdb_key = st.text_input(
         "Inserisci la tua API Key TMDB:",
@@ -412,14 +434,7 @@ st.title("📺 Tracker Serie TV")
 df = st.session_state.df
 
 if not df.empty:
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("Serie Totali", len(df))
-    col_m2.metric(
-        "In Corso", len(df[(df["viste"] > 0) & (df["viste"] < df["totali"])])
-    )
-    col_m3.metric("Completate", len(df[df["viste"] == df["totali"]]))
-    col_m4.metric("Episodi Visti", int(df["viste"].sum()))
-    st.divider()
+    
 
 col_search, col_filter_genre = st.columns([3, 1])
 with col_search:
