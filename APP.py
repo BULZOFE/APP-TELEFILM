@@ -24,12 +24,16 @@ st.markdown(
     .badge-in-progress { background-color: #0284c7; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-not-started { background-color: #475569; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-voto { padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block; margin-left: 5px; }
-
+    
+    /* Stile locandina verticale centrata */
     [data-testid="stImage"] img {
-        border-radius: 8px;
-        max-height: 220px;
+        border-radius: 10px;
+        max-height: 280px;
         object-fit: cover;
-        
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -490,144 +494,135 @@ def render_cards(filtered_df, prefix="all"):
         fav_icon = "⭐" if is_fav else "☆"
 
         with st.container():
-            col_img, col_content = st.columns([1, 4])
+            # LAYOUT VERTICALE PER MOBILE (TUTTO IN COLONNA)
+            
+            # 1. Locandina in alto (più grande e centrata)
+            st.image(img_url, width=160)
+            
+            # 2. Titolo e Badge centrati o ben allineati
+            st.markdown(
+                f"<h4 style='text-align: center; margin-bottom: 0px;'>{show_name}</h4>",
+                unsafe_allow_html=True,
+            )
+            
+            # Riga di contorno: Badge stato e Voto
+            col_badges1, col_badges2 = st.columns(2)
+            with col_badges1:
+                st.markdown(f"<div style='text-align: center;'>{badge}</div>", unsafe_allow_html=True)
+            with col_badges2:
+                st.markdown(f"<div style='text-align: center;'>{voto_badge}</div>", unsafe_allow_html=True)
 
-            with col_img:
-                # Imposta una larghezza fissa in pixel (es. 130) così la locandina rimane piccola e proporzionata
-                st.image(img_url, width=130)
+            st.caption(f"<div style='text-align: center;'>Stagione {stagione} • Genere: {genere}</div>", unsafe_allow_html=True)
+            
+            # 3. Barra di avanzamento
+            st.progress(pct / 100)
+            st.markdown(f"<p style='text-align: center; font-size: 0.85rem; margin-top: -5px;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>", unsafe_allow_html=True)
 
-            with col_content:
-                st.markdown(
-                    f"### {show_name} {badge} {voto_badge}",
-                    unsafe_allow_html=True,
-                )
-                st.caption(f"Stagione {stagione} • Genere: {genere}")
-                st.progress(pct / 100)
+            # 4. Pulsanti di azione disposti comodamente per il tap da cellulare
+            c_plus1, c_popover, c_fav = st.columns([2, 2, 1])
 
-                c_info, c_plus1, c_popover, c_fav = st.columns([3, 1.5, 1.5, 1])
-
-                with c_info:
-                    st.write(
-                        f"Avanzamento: **{viste}/{totali}** puntate ({pct}%)"
-                    )
-
-                with c_plus1:
-                    if viste < totali:
-                        if st.button(
-                            "➕ +1 Ep",
-                            key=f"btn_plus_{prefix}_{idx}",
-                            use_container_width=True,
-                        ):
-                            increment_show_count(show_name)
-                            st.rerun()
-                    else:
-                        st.button(
-                            "✅ Finito",
-                            key=f"btn_done_{prefix}_{idx}",
-                            disabled=True,
-                            use_container_width=True,
-                        )
-
-                with c_popover:
-                    count_key = f"input_viste_{prefix}_{idx}"
-                    voto_key = f"input_voto_{prefix}_{idx}"
-                    
-                    with st.popover("🛠️ Gestisci", use_container_width=True):
-                        st.markdown(f"#### ⚙️ Modifica: {show_name}")
-                        
-                        # CORRETTO: Assicura che il valore nel session_state sia sempre sincronizzato con le puntate attuali se non è già impostato
-                        if count_key not in st.session_state:
-                            st.session_state[count_key] = viste
-
-                        st.number_input(
-                            "Puntate viste esatte:",
-                            min_value=0,
-                            max_value=max(totali, 1),
-                            step=1,
-                            key=count_key,
-                        )
-
-                        # Menu a tendina per il voto della serie
-                        voto_curr = int(voto)
-                        voto_options = list(range(0, 101, 5))
-                        if voto_curr not in voto_options:
-                            voto_options = sorted(
-                                list(set(voto_options + [voto_curr]))
-                            )
-
-                        st.selectbox(
-                            "Voto Serie (Menu a tendina):",
-                            options=voto_options,
-                            index=voto_options.index(voto_curr)
-                            if voto_curr in voto_options
-                            else 10,
-                            key=voto_key,
-                        )
-
-                        if st.button(
-                            "🖼️ Scarica Locandina TMDB",
-                            key=f"tmdb_btn_{prefix}_{idx}",
-                            use_container_width=True,
-                        ):
-                            update_single_poster(show_name)
-                            st.rerun()
-
-                        st.markdown("---")
-                        btn_reset, btn_save, btn_exit = st.columns(3)
-
-                        with btn_reset:
-                            if st.button(
-                                "🔄 Reset",
-                                key=f"reset_{prefix}_{idx}",
-                                use_container_width=True,
-                            ):
-                                st.session_state[count_key] = 0
-
-                        with btn_save:
-                            if st.button(
-                                "💾 Salva",
-                                key=f"save_{prefix}_{idx}",
-                                type="primary",
-                                use_container_width=True,
-                            ):
-                                set_show_watched_count(
-                                    show_name, st.session_state[count_key]
-                                )
-                                set_show_voto(
-                                    show_name, st.session_state[voto_key]
-                                )
-                                st.toast(
-                                    f"Modifiche salvate per '{show_name}'!"
-                                )
-                                st.rerun()
-
-                        with btn_exit:
-                            if st.button(
-                                "❌ Esci",
-                                key=f"exit_{prefix}_{idx}",
-                                use_container_width=True,
-                            ):
-                                st.session_state[count_key] = viste
-                                st.rerun()
-
-                        st.markdown("---")
-                        if st.button(
-                            "🗑️ Elimina Serie",
-                            key=f"del_{prefix}_{idx}",
-                            use_container_width=True,
-                        ):
-                            delete_show(show_name)
-                            st.toast(f"Serie '{show_name}' eliminata.")
-                            st.rerun()
-
-                with c_fav:
+            with c_plus1:
+                if viste < totali:
                     if st.button(
-                        fav_icon,
-                        key=f"btn_fav_{prefix}_{idx}",
+                        "➕ +1 Ep",
+                        key=f"btn_plus_{prefix}_{idx}",
                         use_container_width=True,
                     ):
-                        toggle_favorite(show_name)
+                        increment_show_count(show_name)
                         st.rerun()
+                else:
+                    st.button(
+                        "✅ Finito",
+                        key=f"btn_done_{prefix}_{idx}",
+                        disabled=True,
+                        use_container_width=True,
+                    )
+
+            with c_popover:
+                count_key = f"input_viste_{prefix}_{idx}"
+                voto_key = f"input_voto_{prefix}_{idx}"
+                with st.popover("🛠️ Modifica", use_container_width=True):
+                    st.markdown(f"#### ⚙️ Modifica: {show_name}")
+                    
+                    st.session_state[count_key] = viste
+
+                    st.number_input(
+                        "Puntate viste esatte:",
+                        min_value=0,
+                        max_value=max(totali, 1),
+                        step=1,
+                        key=count_key,
+                    )
+
+                    voto_curr = int(voto)
+                    voto_options = list(range(0, 101, 5))
+                    if voto_curr not in voto_options:
+                        voto_options = sorted(
+                            list(set(voto_options + [voto_curr]))
+                        )
+
+                    st.selectbox(
+                        "Voto Serie:",
+                        options=voto_options,
+                        index=voto_options.index(voto_curr)
+                        if voto_curr in voto_options
+                        else 10,
+                        key=voto_key,
+                    )
+
+                    if st.button(
+                        "🖼️ Aggiorna Locandina",
+                        key=f"tmdb_btn_{prefix}_{idx}",
+                        use_container_width=True,
+                    ):
+                        update_single_poster(show_name)
+                        st.rerun()
+
+                    st.markdown("---")
+                    btn_save, btn_exit = st.columns(2)
+
+                    with btn_save:
+                        if st.button(
+                            "💾 Salva",
+                            key=f"save_{prefix}_{idx}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            set_show_watched_count(
+                                show_name, st.session_state[count_key]
+                            )
+                            set_show_voto(
+                                show_name, st.session_state[voto_key]
+                            )
+                            st.toast(f"Modifiche salvate per '{show_name}'!")
+                            st.rerun()
+
+                    with btn_exit:
+                        if st.button(
+                            "❌ Chiudi",
+                            key=f"exit_{prefix}_{idx}",
+                            use_container_width=True,
+                        ):
+                            st.rerun()
+
+                    st.markdown("---")
+                    if st.button(
+                        "🗑️ Elimina Serie",
+                        key=f"del_{prefix}_{idx}",
+                        use_container_width=True,
+                    ):
+                        delete_show(show_name)
+                        st.toast(f"Serie '{show_name}' eliminata.")
+                        st.rerun()
+
+            with c_fav:
+                if st.button(
+                    fav_icon,
+                    key=f"btn_fav_{prefix}_{idx}",
+                    use_container_width=True,
+                ):
+                    toggle_favorite(show_name)
+                    st.rerun()
 
             st.markdown("---")
 
