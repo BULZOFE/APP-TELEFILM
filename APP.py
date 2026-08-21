@@ -584,7 +584,7 @@ def render_cards(filtered_df, prefix="all"):
         # Gestione sicura dell'URL della locandina
         img_url = row.get("locandina")
         if not img_url or pd.isna(img_url) or str(img_url).strip() == "":
-        img_url = PLACEHOLDER_POSTER  # Un'immagine di fallback locale o fissa
+            img_url = PLACEHOLDER_POSTER  # Un'immagine di fallback locale o fissa
         
         if viste == totali and totali > 0:
             badge = '<span class="badge-completed">COMPLETATO</span>'
