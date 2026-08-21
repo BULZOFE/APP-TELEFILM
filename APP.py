@@ -20,12 +20,18 @@ st.markdown(
     """
 <style>
     .main { background-color: #0f172a; color: #f8fafc; }
+
+    /* 1. Forza la larghezza del contenitore delle card */
+    [data-testid="column"] {
+        max-width: 300px !important;
+        flex: 1 1 300px !important;
+    }
     
     /* Contenitore card ristretto e centrato anche su PC */
     .card-container {
         max-width: 300px;
-        margin: 0 auto 25px auto;
-        padding: 10px;
+        /* margin: 0 auto 25px auto; */
+        padding: 15px;
         background-color: #1e293b;
         border-radius: 14px;
         border: 1px solid #334155;
