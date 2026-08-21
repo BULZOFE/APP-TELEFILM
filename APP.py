@@ -439,13 +439,9 @@ with st.sidebar:
             use_container_width=True,
         )
 
+def reset_page():
+    st.session_state.current_page = 0
 
-# Nella tua sidebar:
-selected_genre = st.sidebar.selectbox(
-    "Filtra per genere", 
-    ["Tutti"] + generi, 
-    on_change=reset_page  # <--- RESETTA LA PAGINA
-)
 
 # --- FUNZIONI AGGIORNAMENTO ---
 def set_show_watched_count(show_name, count):
@@ -503,6 +499,16 @@ def delete_show(show_name):
     ].reset_index(drop=True)
     save_data()
 
+# 2. Inizializzazione dello stato
+if "current_page" not in st.session_state:
+    st.session_state.current_page = 0
+    
+# Nella tua sidebar:
+selected_genre = st.sidebar.selectbox(
+    "Filtra per genere", 
+    ["Tutti"] + generi, 
+    on_change=reset_page  # <--- RESETTA LA PAGINA
+)
 
 # --- INTERFACCIA PRINCIPALE ---
 st.title("📺 Tracker Serie TV")
@@ -531,9 +537,6 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
     "➕ Aggiungi Serie",
 ])
 
-
-def reset_page():
-    st.session_state.current_page = 0
     
 def render_cards(filtered_df, prefix="all"):
     if search_query:
