@@ -522,10 +522,7 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 def render_cards(filtered_df, prefix="all"):
     if search_query:
         filtered_df = filtered_df[
-            filtered_df["show"]
-            .astype(str)
-            .str.lower()
-            .str.contains(search_query)
+            filtered_df["show"].astype(str).str.lower().str.contains(search_query)
         ]
 
     if selected_genre != "Tutti":
@@ -536,11 +533,6 @@ def render_cards(filtered_df, prefix="all"):
         return
 
     max_cards = 150
-    total_count = len(filtered_df)
-
-    if total_count > max_cards:
-        st.caption(f"Mostrando le prime {max_cards} serie su {total_count}.")
-
     for idx, row in filtered_df.head(max_cards).iterrows():
         show_name = row["show"]
         viste = int(row["viste"])
@@ -549,62 +541,48 @@ def render_cards(filtered_df, prefix="all"):
         genere = row["genere"]
         is_fav = bool(row["preferito"])
         voto = row.get("voto", 50.0)
+        
+        # Calcolo variabili PRIMA del rendering
+        pct = int((viste / totali) * 100) if totali > 0 else 0
+        img_url = row.get("locandina", PLACEHOLDER_POSTER) if pd.notna(row.get("locandina")) else PLACEHOLDER_POSTER
+        
+        if viste == totali and totali > 0:
+            badge = '<span class="badge-completed">COMPLETATO</span>'
+        elif viste > 0:
+            badge = '<span class="badge-in-progress">IN CORSO</span>'
+        else:
+            badge = '<span class="badge-not-started">DA INIZIARE</span>'
 
-        img_url = (
-            row.get("locandina", PLACEHOLDER_POSTER)
-            if pd.notna(row.get("locandina"))
-            else PLACEHOLDER_POSTER
-        )
+        voto_badge = get_voto_badge_html(voto)
+        fav_icon = "⭐" if is_fav else "☆"
 
-        # Calcoliamo quale episodio è il prossimo da vedere
-        prossimo_ep = viste + 1
-        trama_testo = "Trama non disponibile."
-        titolo_ep = ""
-
-        # Se abbiamo una chiave TMDB e la serie non è completata
-        if viste < totali:
-            tmdb_key_val = st.session_state.get("tmdb_key", "")
-            if tmdb_key_val:
-                ep_name, ep_overview = fetch_tmdb_episode_details(show_name, stagione, prossimo_ep, tmdb_key_val)
-                if ep_name:
-                    titolo_ep = ep_name
-                if ep_overview:
-                    trama_testo = ep_overview
-                else:
-                    trama_testo = "Nessuna descrizione disponibile per questo episodio."
-
+        # Rendering della Card
         with st.container():
-            # Layout a due colonne: Sinistra Locandina, Destra Info Puntata e Trama
-            c_img, c_info = st.columns([1, 2])
-            
-            with c_img:
-                st.image(img_url, width=140)
-                
-            with c_info:
-                # Titolo serie in viola (come richiesto in precedenza)
-                st.markdown(f"<div class='serie-title'>{show_name}</div>", unsafe_allow_html=True)
-                
-                # Badge di stato e Voto
-                col_b1, col_b2 = st.columns(2)
-                with col_b1:
-                    st.markdown(badge, unsafe_allow_html=True)
-                with col_b2:
-                    st.markdown(voto_badge, unsafe_allow_html=True)
-                
-                st.caption(f"Stagione {stagione} • Genere: {genere}")
-                
-                # Indicazione della puntata da vedere e trama
-                if viste < totali:
-                    st.markdown(f"**Prossimo episodio:** Ep. {prossimo_ep}" + (f" - *{titolo_ep}*" if titolo_ep else ""))
-                    st.markdown(f"<p style='font-size: 0.8rem; color: #94a3b8; font-style: italic; margin-top: 5px;'>{trama_testo}</p>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<p style='color: #10b981; font-weight: bold;'>Serie Completata! 🎉</p>", unsafe_allow_html=True)
+            st.markdown('<div class="card-container">', unsafe_allow_html=True)
+            st.image(img_url, width=150)
+            st.markdown(f'<div class="serie-title">{show_name}</div>', unsafe_allow_html=True)
 
-            # Barra di avanzamento sotto
+            col_badges1, col_badges2 = st.columns(2)
+            with col_badges1:
+                st.markdown(f"<div style='text-align: center;'>{badge}</div>", unsafe_allow_html=True)
+            with col_badges2:
+                st.markdown(f"<div style='text-align: center;'>{voto_badge}</div>", unsafe_allow_html=True)
+
+            st.markdown(
+                f"<div style='text-align: center; color: #94a3b8; font-size: 0.9rem; margin-top: 6px;'>Stagione {stagione} • Genere: {genere}</div>",
+                unsafe_allow_html=True,
+            )
+
             st.progress(pct / 100)
-            st.markdown(f"<p style='text-align: center; font-size: 0.85rem; margin-top: -5px;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>", unsafe_allow_html=True)
+            st.markdown(
+                f"<p style='text-align: center; font-size: 0.9rem; margin-top: -2px; color: #cbd5e1;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>",
+                unsafe_allow_html=True,
+            )
             
-            # (Restanti pulsanti di azione: +1 Ep, Modifica, Preferito...)
+            # --- Pulsanti di azione (omessi per brevità, mantieni quelli originali) ---
+            # ... (c_plus1, c_popover, c_fav, ecc.) ...
+
+            st.markdown("</div>", unsafe_allow_html=True)
         
         pct = int((viste / totali) * 100) if totali > 0 else 0
 
