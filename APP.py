@@ -432,8 +432,6 @@ def delete_show(show_name):
 st.title("📺 Tracker Serie TV")
 
 df = st.session_state.df
-
-if not df.empty:
     
 
 col_search, col_filter_genre = st.columns([3, 1])
