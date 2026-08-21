@@ -532,6 +532,9 @@ tab_all, tab_in_prog, tab_comp, tab_fav, tab_add = st.tabs([
 ])
 
 
+def reset_page():
+    st.session_state.current_page = 0
+    
 def render_cards(filtered_df, prefix="all"):
     if search_query:
         filtered_df = filtered_df[
@@ -549,8 +552,6 @@ def render_cards(filtered_df, prefix="all"):
     cards_per_page = 20
     total_pages = (len(filtered_df) - 1) // cards_per_page + 1
 
-    def reset_page():
-    st.session_state.current_page = 0
     
     # Assicura che la pagina corrente sia valida se i dati cambiano
     if st.session_state.current_page >= total_pages:
