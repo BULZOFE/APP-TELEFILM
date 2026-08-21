@@ -746,24 +746,27 @@ def render_cards(filtered_df, prefix="all"):
             # Chiusura contenitore card
             st.markdown("</div>", unsafe_allow_html=True)
             
-    # 4. Bottoni di Navigazione
-    st.markdown("---") # Divisore estetico
-    col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
-    
-    with col_nav1:
-        if st.session_state.current_page > 0:
-            if st.button("⬅️ Precedente"):
-                st.session_state.current_page -= 1
-                st.rerun()
-                
-    with col_nav2:
-        st.markdown(f"<div style='text-align: center;'>Pagina {st.session_state.current_page + 1} di {total_pages}</div>", unsafe_allow_html=True)
+    # --- Bottoni di Navigazione (Con KEY UNIVOCA basata sul prefix) ---
+    if total_pages > 1:
+        st.markdown("---") 
+        col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
         
-    with col_nav3:
-        if st.session_state.current_page < total_pages - 1:
-            if st.button("Successiva ➡️"):
-                st.session_state.current_page += 1
-                st.rerun()
+        with col_nav1:
+            if st.session_state.current_page > 0:
+                # AGGIUNTO prefix=f"prev_{prefix}"
+                if st.button("⬅️ Precedente", key=f"prev_{prefix}", use_container_width=True):
+                    st.session_state.current_page -= 1
+                    st.rerun()
+                    
+        with col_nav2:
+            st.markdown(f"<div style='text-align: center; margin-top: 8px;'>Pagina {st.session_state.current_page + 1} di {total_pages}</div>", unsafe_allow_html=True)
+            
+        with col_nav3:
+            if st.session_state.current_page < total_pages - 1:
+                # AGGIUNTO prefix=f"next_{prefix}"
+                if st.button("Successiva ➡️", key=f"next_{prefix}", use_container_width=True):
+                    st.session_state.current_page += 1
+                    st.rerun()
 
 # --- CONTENUTO TAB ---
 with tab_all:
