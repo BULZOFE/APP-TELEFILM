@@ -590,34 +590,6 @@ def render_cards(filtered_df, prefix="all"):
 
         voto_badge = get_voto_badge_html(voto)
         fav_icon = "⭐" if is_fav else "☆"
-
-        # Rendering della Card
-        with st.container():
-            st.markdown('<div class="card-container">', unsafe_allow_html=True)
-            st.image(img_url, width=150)
-            st.markdown(f'<div class="serie-title">{show_name}</div>', unsafe_allow_html=True)
-
-            col_badges1, col_badges2 = st.columns(2)
-            with col_badges1:
-                st.markdown(f"<div style='text-align: center;'>{badge}</div>", unsafe_allow_html=True)
-            with col_badges2:
-                st.markdown(f"<div style='text-align: center;'>{voto_badge}</div>", unsafe_allow_html=True)
-
-            st.markdown(
-                f"<div style='text-align: center; color: #94a3b8; font-size: 0.9rem; margin-top: 6px;'>Stagione {stagione} • Genere: {genere}</div>",
-                unsafe_allow_html=True,
-            )
-
-            st.progress(pct / 100)
-            st.markdown(
-                f"<p style='text-align: center; font-size: 0.9rem; margin-top: -2px; color: #cbd5e1;'>Avanzamento: <b>{viste}/{totali}</b> ({pct}%)</p>",
-                unsafe_allow_html=True,
-            )
-            
-            # --- Pulsanti di azione (omessi per brevità, mantieni quelli originali) ---
-            # ... (c_plus1, c_popover, c_fav, ecc.) ...
-
-            st.markdown("</div>", unsafe_allow_html=True)
         
         pct = int((viste / totali) * 100) if totali > 0 else 0
 
