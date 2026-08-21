@@ -72,7 +72,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
+    
 def get_voto_badge_html(voto):
     """Restituisce il tag HTML del badge per il voto in base al valore (0-100) con colori differenti."""
     try:
@@ -440,9 +440,6 @@ with st.sidebar:
         )
 
 
-def reset_page():
-    st.session_state.current_page = 0
-
 # Nella tua sidebar:
 selected_genre = st.sidebar.selectbox(
     "Filtra per genere", 
@@ -551,6 +548,9 @@ def render_cards(filtered_df, prefix="all"):
     # 2. Logica di Paginazione
     cards_per_page = 20
     total_pages = (len(filtered_df) - 1) // cards_per_page + 1
+
+    def reset_page():
+    st.session_state.current_page = 0
     
     # Assicura che la pagina corrente sia valida se i dati cambiano
     if st.session_state.current_page >= total_pages:
