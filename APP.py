@@ -240,7 +240,7 @@ def load_data():
 
 search_query = st.sidebar.text_input(
     "Cerca...", 
-    on_change=reset_page  # <--- RESETTA LA PAGINA
+    on_change=lambda: st.session_state.update({"current_page": 0})
 )
 
 def save_data():
@@ -507,7 +507,7 @@ if "current_page" not in st.session_state:
 selected_genre = st.sidebar.selectbox(
     "Filtra per genere", 
     ["Tutti"] + generi, 
-    on_change=reset_page  # <--- RESETTA LA PAGINA
+    on_change=lambda: st.session_state.update({"current_page": 0})
 )
 
 # --- INTERFACCIA PRINCIPALE ---
