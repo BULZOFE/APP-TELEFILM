@@ -568,7 +568,7 @@ def render_cards(filtered_df, prefix="all"):
     end_idx = start_idx + cards_per_page
     page_df = filtered_df.iloc[start_idx:end_idx]
     
-    for idx, row in filtered_df.head(max_cards).iterrows():
+    for idx, row in page_df.iterrows():
         show_name = row["show"]
         viste = int(row["viste"])
         totali = int(row["totali"])
