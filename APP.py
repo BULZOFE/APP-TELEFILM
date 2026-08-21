@@ -23,9 +23,9 @@ st.markdown(
     
     /* Contenitore card ristretto e centrato anche su PC */
     .card-container {
-        max-width: 420px;
+        max-width: 300px;
         margin: 0 auto 25px auto;
-        padding: 15px;
+        padding: 10px;
         background-color: #1e293b;
         border-radius: 14px;
         border: 1px solid #334155;
@@ -35,7 +35,7 @@ st.markdown(
     /* Titolo serie in viola, grande e in evidenza */
     .serie-title {
         color: #c084fc;
-        font-size: 1.4rem;
+        font-size: 24px;
         font-weight: 800;
         text-align: center;
         margin-top: 10px;
@@ -44,12 +44,12 @@ st.markdown(
     }
 
     /* Badge di stato più grandi e visibili */
-    .badge-completed { background-color: #059669; color: white; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
-    .badge-in-progress { background-color: #0284c7; color: white; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
-    .badge-not-started { background-color: #475569; color: white; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
+    .badge-completed { background-color: #059669; color: white; padding: 5px 12px; border-radius: 12px; font-size: 18pxm; font-weight: 700; display: inline-block; }
+    .badge-in-progress { background-color: #0284c7; color: white; padding: 5px 12px; border-radius: 12px; font-size: 18px; font-weight: 700; display: inline-block; }
+    .badge-not-started { background-color: #475569; color: white; padding: 5px 12px; border-radius: 12px; font-size: 18px; font-weight: 700; display: inline-block; }
     
     /* Badge Voto più grande e in evidenza */
-    .badge-voto { padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 800; display: inline-block; }
+    .badge-voto { padding: 5px 12px; border-radius: 12px; font-size: 18px; font-weight: 800; display: inline-block; }
 
     /* Stile locandina verticale centrata */
     [data-testid="stImage"] img {
