@@ -146,7 +146,7 @@ def trova_percorso_csv():
             return nome
     return None
 
-
+@st.cache_data(ttl=None)  # I dati restano in cache finché non vengono modificati
 def load_data():
     file_path = trova_percorso_csv()
     if not file_path:
@@ -241,6 +241,8 @@ def load_data():
 search_query = st.sidebar.text_input(
     "Cerca...", 
     on_change=lambda: st.session_state.update({"current_page": 0})
+
+    
 )
 
 def save_data():
@@ -579,7 +581,10 @@ def render_cards(filtered_df, prefix="all"):
         
         # Calcolo variabili PRIMA del rendering
         pct = int((viste / totali) * 100) if totali > 0 else 0
-        img_url = row.get("locandina", PLACEHOLDER_POSTER) if pd.notna(row.get("locandina")) else PLACEHOLDER_POSTER
+        # Gestione sicura dell'URL della locandina
+        img_url = row.get("locandina")
+        if not img_url or pd.isna(img_url) or str(img_url).strip() == "":
+        img_url = PLACEHOLDER_POSTER  # Un'immagine di fallback locale o fissa
         
         if viste == totali and totali > 0:
             badge = '<span class="badge-completed">COMPLETATO</span>'
