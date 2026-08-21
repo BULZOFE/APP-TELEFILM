@@ -236,15 +236,7 @@ def load_data():
         st.error(f"Errore nella lettura del file: {e}")
         return pd.DataFrame()
 
-def reset_page():
-    st.session_state.current_page = 0
 
-# Nella tua sidebar:
-selected_genre = st.sidebar.selectbox(
-    "Filtra per genere", 
-    ["Tutti"] + generi, 
-    on_change=reset_page  # <--- RESETTA LA PAGINA
-)
 
 search_query = st.sidebar.text_input(
     "Cerca...", 
@@ -447,6 +439,16 @@ with st.sidebar:
             use_container_width=True,
         )
 
+
+def reset_page():
+    st.session_state.current_page = 0
+
+# Nella tua sidebar:
+selected_genre = st.sidebar.selectbox(
+    "Filtra per genere", 
+    ["Tutti"] + generi, 
+    on_change=reset_page  # <--- RESETTA LA PAGINA
+)
 
 # --- FUNZIONI AGGIORNAMENTO ---
 def set_show_watched_count(show_name, count):
