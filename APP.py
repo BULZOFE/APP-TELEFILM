@@ -258,6 +258,9 @@ if "df" not in st.session_state or st.session_state.df.empty:
 if "voti_generi" not in st.session_state:
     st.session_state.voti_generi = {}
 
+# --- CALCOLO GENERI QUI ---
+generi = sorted(st.session_state.df["genere"].dropna().unique().tolist()) if "genere" in st.session_state.df.columns else []
+
 # Normalizzazione colonne
 if not st.session_state.df.empty:
     req_cols = [
